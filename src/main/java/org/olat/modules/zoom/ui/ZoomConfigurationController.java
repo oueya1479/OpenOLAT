@@ -19,6 +19,11 @@
  */
 package org.olat.modules.zoom.ui;
 
+import static java.util.stream.Collectors.toList;
+import static org.olat.core.gui.components.link.LinkFactory.createLink;
+
+import java.util.List;
+
 import org.olat.collaboration.CollaborationToolsFactory;
 import org.olat.core.gui.UserRequest;
 import org.olat.core.gui.components.Component;
@@ -30,7 +35,11 @@ import org.olat.core.gui.components.form.flexible.elements.MultipleSelectionElem
 import org.olat.core.gui.components.form.flexible.impl.FormBasicController;
 import org.olat.core.gui.components.form.flexible.impl.FormEvent;
 import org.olat.core.gui.components.form.flexible.impl.FormLayoutContainer;
-import org.olat.core.gui.components.form.flexible.impl.elements.table.*;
+import org.olat.core.gui.components.form.flexible.impl.elements.table.DefaultFlexiColumnModel;
+import org.olat.core.gui.components.form.flexible.impl.elements.table.FlexiTableColumnModel;
+import org.olat.core.gui.components.form.flexible.impl.elements.table.FlexiTableDataModelFactory;
+import org.olat.core.gui.components.form.flexible.impl.elements.table.SelectionEvent;
+import org.olat.core.gui.components.form.flexible.impl.elements.table.StickyActionColumnModel;
 import org.olat.core.gui.components.link.Link;
 import org.olat.core.gui.components.velocity.VelocityContainer;
 import org.olat.core.gui.control.Controller;
@@ -42,13 +51,9 @@ import org.olat.core.gui.control.generic.closablewrapper.CloseableModalControlle
 import org.olat.modules.zoom.ZoomManager;
 import org.olat.modules.zoom.ZoomModule;
 import org.olat.modules.zoom.ZoomProfile;
+import org.olat.modules.zoom.manager.ZoomProfileDAO;
 import org.olat.modules.zoom.ui.ZoomProfilesTableModel.ZoomProfileCols;
 import org.springframework.beans.factory.annotation.Autowired;
-
-import java.util.List;
-
-import static java.util.stream.Collectors.toList;
-import static org.olat.core.gui.components.link.LinkFactory.createLink;
 
 /**
  *
@@ -98,6 +103,7 @@ public class ZoomConfigurationController extends FormBasicController {
     protected void initForm(FormItemContainer formLayout, Controller listener, UserRequest ureq) {
         setFormTitle("zoom.title");
         setFormInfo("zoom.info");
+        setFormContextHelp("manual_admin/administration/Zoom/");
 
         moduleEnabledEl = uifactory.addCheckboxesHorizontal("zoom.module.enabled", formLayout, enabledKeys, enabledValues);
         moduleEnabledEl.select(enabledKeys[0], zoomModule.isEnabled());
@@ -117,8 +123,8 @@ public class ZoomConfigurationController extends FormBasicController {
         columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(ZoomProfileCols.name));
         columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(ZoomProfileCols.status));
         columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(ZoomProfileCols.mailDomain));
-        columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(ZoomProfileCols.studentsCanHost));
         columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(ZoomProfileCols.clientId));
+        columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(ZoomProfileCols.applications));
         columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel("edit", translate("edit"), "edit"));
 
         StickyActionColumnModel toolsColumn = new StickyActionColumnModel(ZoomProfileCols.tools.i18nHeaderKey(), ZoomProfileCols.tools.ordinal());
@@ -140,6 +146,7 @@ public class ZoomConfigurationController extends FormBasicController {
         boolean valid = super.validateFormLogic(ureq);
 
         boolean enabled = moduleEnabledEl.isSelected(0);
+        profilesTableEl.clearError();
         if (enabled) {
             if (profilesTableModel.getRowCount() == 0) {
                 profilesTableEl.setErrorKey("zoom.profiles.mandatory", null);
@@ -237,14 +244,14 @@ public class ZoomConfigurationController extends FormBasicController {
     }
     
     private void loadModel() {
-        List<ZoomProfileRow> profileRows = zoomManager.getProfiles().stream().map(this::mapZoomProfileToRow).collect(toList());
+        List<ZoomProfileRow> profileRows = zoomManager.getProfilesWithConfigCount().stream().map(this::mapZoomProfileToRow).collect(toList());
         profilesTableModel.setObjects(profileRows);
         profilesTableEl.reset(true, true, true);
     }
 
-    private ZoomProfileRow mapZoomProfileToRow(ZoomProfile zoomProfile) {
-        ZoomProfileRow row = new ZoomProfileRow(zoomProfile);
-        addToolLink(row, zoomProfile);
+    private ZoomProfileRow mapZoomProfileToRow(ZoomProfileDAO.ZoomProfileWithConfigCount zoomProfileWithConfigCount) {
+        ZoomProfileRow row = new ZoomProfileRow(zoomProfileWithConfigCount.getZoomProfile(), zoomProfileWithConfigCount.getConfigCount());
+        addToolLink(row, zoomProfileWithConfigCount.getZoomProfile());
         return row;
     }
 
@@ -300,7 +307,7 @@ public class ZoomConfigurationController extends FormBasicController {
         listenTo(modalCtrl);
     }
 
-    private void doCopy(UserRequest ureq, ZoomProfileRow row) {
+    private void doCopy(ZoomProfileRow row) {
         ZoomProfile zoomProfile = row.getZoomProfile();
         zoomManager.copyProfile(zoomProfile);
         loadModel();
@@ -338,14 +345,14 @@ public class ZoomConfigurationController extends FormBasicController {
         listenTo(modalCtrl);
     }
 
-    private void doDeactivate(UserRequest ureq, ZoomProfileRow row) {
+    private void doDeactivate(ZoomProfileRow row) {
         ZoomProfile zoomProfile = row.getZoomProfile();
         zoomProfile.setStatus(ZoomProfile.ZoomProfileStatus.inactive);
         zoomManager.updateProfile(zoomProfile);
         loadModel();
     }
 
-    private void doActivate(UserRequest ureq, ZoomProfileRow row) {
+    private void doActivate(ZoomProfileRow row) {
         ZoomProfile zoomProfile = row.getZoomProfile();
         zoomProfile.setStatus(ZoomProfile.ZoomProfileStatus.active);
         zoomManager.updateProfile(zoomProfile);
@@ -401,7 +408,7 @@ public class ZoomConfigurationController extends FormBasicController {
             if (editLink == source) {
                 doEdit(ureq, row);
             } else if (copyLink == source) {
-                doCopy(ureq, row);
+                doCopy(row);
             } else if (deleteLink == source) {
                 if (zoomManager.isInUse(row.getZoomProfile())) {
                     doWarnProfileInUse(ureq, row);
@@ -409,9 +416,9 @@ public class ZoomConfigurationController extends FormBasicController {
                     doConfirmDelete(ureq, row);
                 }
             } else if (deactivateLink == source) {
-                doDeactivate(ureq, row);
+                doDeactivate(row);
             } else if (activateLink == source) {
-                doActivate(ureq, row);
+                doActivate(row);
             }
         }
     }

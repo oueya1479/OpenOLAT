@@ -163,6 +163,29 @@
 						</property>
 					</bean>
 				</entry>
+				
+				<!--
+					Forms that show user properties with role invitee
+				-->
+				<entry key="org.olat.user.ProfileFormController_invitee">
+					<bean class="org.olat.user.propertyhandlers.UserPropertyUsageContext">
+						<property name="description" value="Users Profile-Form (Home->Settings)" />
+						<property name="propertyHandlers">
+							<list>
+								<ref bean="userPropertyFirstName" />
+								<ref bean="userPropertyLastName" />
+								<ref bean="userPropertyEmail" />
+							</list>
+						</property>
+						<property name="mandatoryProperties">
+							<set>
+								<ref bean="userPropertyFirstName" />
+								<ref bean="userPropertyLastName" />
+								<ref bean="userPropertyEmail" />
+							</set>
+						</property>
+					</bean>
+				</entry>
 
 				<!--
 					Indexed for fulltext search (only the fields that a user selects to publish are indexed)
@@ -2131,6 +2154,30 @@
 								<ref bean="userPropertyInstitutionalUserIdentifier" />
 								<ref bean="userPropertyInstitutionalEmail" />
 							</set>
+						</property>
+					</bean>
+				</entry>
+				
+				<entry key="org.olat.basesecurity.Invitation">
+					<bean class="org.olat.user.propertyhandlers.UserPropertyUsageContext">
+						<property name="propertyHandlers">
+						<!--  the login field is always available, this is
+						defined within the UserSearchform.java -->
+							<list>
+								<ref bean="userPropertyFirstName" />
+								<ref bean="userPropertyLastName" />
+								<ref bean="userPropertyEmail" />
+							</list>
+						</property>
+						<property name="mandatoryProperties">
+							<set>
+								<ref bean="userPropertyUserNickName" />
+								<ref bean="userPropertyLastName" />
+								<ref bean="userPropertyFirstName" />
+							</set>
+						</property>
+						<property name="adminViewOnlyProperties">
+							<set></set>
 						</property>
 					</bean>
 				</entry>

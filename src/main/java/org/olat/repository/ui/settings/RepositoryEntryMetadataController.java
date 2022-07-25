@@ -176,7 +176,7 @@ public class RepositoryEntryMetadataController extends FormBasicController {
 	protected void initForm(FormItemContainer formLayout, Controller listener, UserRequest ureq) {
 		formLayout.setElementCssClass("o_sel_repo_metadata");
 		if (showHeading) {
-			setFormContextHelp("manual_user/authoring/Set_up_info_page/");
+			setFormContextHelp("manual_user/authoring/Set_up_info_page#metadata");
 			setFormTitle("details.metadata.title");
 		}
 		
@@ -224,8 +224,10 @@ public class RepositoryEntryMetadataController extends FormBasicController {
 			taxonomyLevels = new HashSet<>(repositoryService.getTaxonomy(repositoryEntry));
 			Set<TaxonomyLevel> allTaxonomieLevels = new HashSet<>(taxonomyService.getTaxonomyLevels(taxonomyRefs));
 			
-			taxonomyLevelEl = uifactory.addTaxonomyLevelSelection("taxonomyLevel", "cif.taxonomy.levels", formLayout,
+			String labelI18nKey = catalogModule.isEnabled()? "cif.taxonomy.levels.catalog": "cif.taxonomy.levels";
+			taxonomyLevelEl = uifactory.addTaxonomyLevelSelection("taxonomyLevel", labelI18nKey, formLayout,
 					getWindowControl(), allTaxonomieLevels);
+			taxonomyLevelEl.setDisplayNameHeader(translate(labelI18nKey));
 			taxonomyLevelEl.setSelection(taxonomyLevels);
 			if (catalogModule.isEnabled()) {
 				taxonomyLevelEl.setHelpTextKey("cif.taxonomy.levels.help.catalog", null);

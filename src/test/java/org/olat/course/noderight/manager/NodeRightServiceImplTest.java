@@ -1463,7 +1463,25 @@ public class NodeRightServiceImplTest {
 		public void setWaitingListEnabled(Boolean waitingListEnabled) {
 			
 		}
-		
-	}
 
+		@Override
+		public boolean isInvitationByCoachWithAuthorRightsEnabled() {
+			return false;
+		}
+
+		@Override
+		public void setInvitationByCoachWithAuthorRightsEnabled(boolean enabled) {
+			//
+		}
+
+		@Override
+		public boolean isLTI13DeploymentByCoachWithAuthorRightsEnabled() {
+			return false;
+		}
+
+		@Override
+		public void setLTI13DeploymentByCoachWithAuthorRightsEnabled(boolean enabled) {
+			//
+		}
+	}
 }

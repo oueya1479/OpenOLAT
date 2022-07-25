@@ -39,6 +39,7 @@ import org.olat.core.id.Organisation;
 import org.olat.core.id.OrganisationRef;
 import org.olat.core.id.UserConstants;
 import org.olat.core.util.DateUtils;
+import org.olat.course.statistic.daily.DailyStat;
 import org.olat.modules.catalog.CatalogRepositoryEntrySearchParams;
 import org.olat.modules.catalog.CatalogRepositoryEntrySearchParams.OrderBy;
 import org.olat.modules.catalog.ui.CatalogRepositoryEntryDataModel;
@@ -96,6 +97,36 @@ public class CatalogRepositoryEntryQueriesTest extends OlatTestCase {
 	@After
 	public void enableFreeAccessMethod() {
 		acService.enableMethod(FreeAccessMethod.class, true);
+	}
+	
+	@Test
+	public void shouldLoadTaxonomyLevelKeysWithOffers() {
+		TestCatalogItem catalogItem = createCatalogItem(5);
+		
+		Taxonomy taxonomy = taxonomyService.getTaxonomyList().get(0);
+		TaxonomyLevel taxonomyLevel1 = taxonomyService.createTaxonomyLevel(random(), random(), null, null, null, taxonomy);
+		TaxonomyLevel taxonomyLevel2 = taxonomyService.createTaxonomyLevel(random(), random(), null, null, taxonomyLevel1, taxonomy);
+		TaxonomyLevel taxonomyLevel3 = taxonomyService.createTaxonomyLevel(random(), random(), null, null, null, taxonomy);
+		TaxonomyLevel taxonomyLevel4 = taxonomyService.createTaxonomyLevel(random(), random(), null, null, null, taxonomy);
+		
+		repositoryManager.setDescriptionAndName(catalogItem.getRepositoryEntry(0), random(), null, null, null, null, null, null, null, null, null, null, null, null, Set.of(taxonomyLevel1), null);
+		repositoryManager.setDescriptionAndName(catalogItem.getRepositoryEntry(1), random(), null, null, null, null, null, null, null, null, null, null, null, null, Set.of(taxonomyLevel1, taxonomyLevel2), null);
+		repositoryManager.setDescriptionAndName(catalogItem.getRepositoryEntry(2), random(), null, null, null, null, null, null, null, null, null, null, null, null, Set.of(taxonomyLevel1, taxonomyLevel3), null);
+		repositoryManager.setDescriptionAndName(catalogItem.getRepositoryEntry(3), random(), null, null, null, null, null, null, null, null, null, null, null, null, Set.of(taxonomyLevel2), null);
+		dbInstance.commitAndCloseSession();
+		
+		CatalogRepositoryEntrySearchParams searchParams = catalogItem.getSearchParams();
+		List<String> taxonomyLevelKeysWithOffers = sut.loadTaxonomyLevelPathKeysWithOffers(searchParams);
+		
+		assertThat(taxonomyLevelKeysWithOffers)
+				.containsExactlyInAnyOrder(
+						taxonomyLevel1.getMaterializedPathKeys(),
+						taxonomyLevel2.getMaterializedPathKeys(),
+						taxonomyLevel3.getMaterializedPathKeys()
+						)
+				.doesNotContain(
+						taxonomyLevel4.getMaterializedPathKeys()
+						);
 	}
 	
 	@Test
@@ -952,6 +983,39 @@ public class CatalogRepositoryEntryQueriesTest extends OlatTestCase {
 				repositoryEntryLastPublished,
 				repositoryEntrySecondPublished,
 				repositoryEntryFirstPublished);
+	}
+	
+	@Test
+	public void shouldLoadRepositoryEntries_orderBy_PopularCourse() {
+		TestCatalogItem catalogItem = createCatalogItem(3);
+		RepositoryEntry repositoryEntryVeryPopular = catalogItem.getRepositoryEntry(0);
+		RepositoryEntry repositoryEntryNotPopular = catalogItem.getRepositoryEntry(1);
+		RepositoryEntry repositoryEntryPopular= catalogItem.getRepositoryEntry(2);
+		addDailyStat(repositoryEntryVeryPopular, DateUtils.addDays(new Date(), -2), 10);
+		addDailyStat(repositoryEntryVeryPopular, DateUtils.addDays(new Date(), -3), 10);
+		addDailyStat(repositoryEntryVeryPopular, DateUtils.addDays(new Date(), -10), 10);
+		addDailyStat(repositoryEntryNotPopular, DateUtils.addDays(new Date(), -4), 5);
+		addDailyStat(repositoryEntryPopular, DateUtils.addDays(new Date(), -4), 20);
+		dbInstance.commitAndCloseSession();
+		
+		CatalogRepositoryEntrySearchParams searchParams = catalogItem.getSearchParams();
+		searchParams.setOrderBy(OrderBy.popularCourses);
+		searchParams.setOrderByAsc(false);
+		List<RepositoryEntry> repositoryEntries = sut.loadRepositoryEntries(searchParams, 0, -1);
+		
+		assertThat(repositoryEntries).containsExactly(
+				repositoryEntryVeryPopular,
+				repositoryEntryPopular,
+				repositoryEntryNotPopular);
+	}
+	
+	private void addDailyStat(RepositoryEntry entry, Date day, int value) {
+		DailyStat dailyStat = new DailyStat();
+		dailyStat.setResId(entry.getKey());
+		dailyStat.setBusinessPath(random());
+		dailyStat.setDay(day);
+		dailyStat.setValue(value);
+		dbInstance.getCurrentEntityManager().persist(dailyStat);
 	}
 	
 	@Test

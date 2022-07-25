@@ -28,11 +28,10 @@ import org.olat.basesecurity.OrganisationRoles;
 import org.olat.core.commons.persistence.DBFactory;
 import org.olat.core.gui.UserRequest;
 import org.olat.core.gui.components.Component;
+import org.olat.core.gui.components.dropdown.Dropdown;
+import org.olat.core.gui.components.dropdown.DropdownOrientation;
 import org.olat.core.gui.components.link.Link;
 import org.olat.core.gui.components.link.LinkFactory;
-import org.olat.core.gui.components.segmentedview.SegmentViewComponent;
-import org.olat.core.gui.components.segmentedview.SegmentViewEvent;
-import org.olat.core.gui.components.segmentedview.SegmentViewFactory;
 import org.olat.core.gui.components.stack.TooledStackedPanel;
 import org.olat.core.gui.components.velocity.VelocityContainer;
 import org.olat.core.gui.control.Controller;
@@ -60,18 +59,21 @@ import org.olat.core.util.resource.OresHelper;
 import org.olat.course.member.wizard.ImportMemberByUsernamesController;
 import org.olat.course.member.wizard.ImportMember_1a_LoginListStep;
 import org.olat.course.member.wizard.ImportMember_1b_ChooseMemberStep;
+import org.olat.course.member.wizard.InvitationContext;
+import org.olat.course.member.wizard.InvitationFinishCallback;
+import org.olat.course.member.wizard.Invitation_1_MailStep;
 import org.olat.course.member.wizard.MembersByNameContext;
 import org.olat.course.member.wizard.MembersContext;
 import org.olat.course.run.userview.UserCourseEnvironment;
 import org.olat.group.BusinessGroupService;
 import org.olat.group.model.BusinessGroupMembershipChange;
-import org.olat.group.ui.main.AbstractMemberListController;
 import org.olat.group.ui.main.DedupMembersConfirmationController;
 import org.olat.group.ui.main.MemberListSecurityCallback;
 import org.olat.group.ui.main.MemberPermissionChangeEvent;
 import org.olat.group.ui.main.SearchMembersParams;
 import org.olat.modules.curriculum.CurriculumService;
 import org.olat.modules.curriculum.model.CurriculumElementMembershipChange;
+import org.olat.modules.invitation.InvitationModule;
 import org.olat.repository.RepositoryEntry;
 import org.olat.repository.RepositoryEntryManagedFlag;
 import org.olat.repository.RepositoryManager;
@@ -89,36 +91,22 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class MembersOverviewController extends BasicController implements Activateable2 {
 	
 	private static final String SEG_ALL_MEMBERS = "All";
-	private static final String SEG_OWNERS_MEMBERS = "Owners";
-	private static final String SEG_TUTORS_MEMBERS = "Coaches";
-	private static final String SEG_PARTICIPANTS_MEMBERS = "Participants";
-	private static final String SEG_WAITING_MEMBERS = "Waiting";
-	private static final String SEG_SEARCH_MEMBERS = "Search";
 	
 	private Link overrideLink;
 	private Link unOverrideLink;
+	private Link invitationLink;
 	private final Link dedupLink;
 	private final Link addMemberLink;
 	private final Link importMemberLink;
-	private final Link ownersLink;
-	private final Link tutorsLink;
-	private final Link searchLink;
-	private final Link allMembersLink;
-	private final Link waitingListLink;
-	private final Link participantsLink;
-	private final SegmentViewComponent segmentView;
+	private final Dropdown moreDropdown;
+	private final Dropdown addMemberDropdown; 
 	private final VelocityContainer mainVC;
 	private final TooledStackedPanel toolbarPanel;
 	
-	private AbstractMemberListController allMemberListCtrl;
-	private AbstractMemberListController ownersCtrl;
-	private AbstractMemberListController tutorsCtrl;
-	private AbstractMemberListController participantsCtrl;
-	private AbstractMemberListController waitingCtrl;
-	private AbstractMemberListController selectedCtrl;
-	private AbstractMemberListController searchCtrl;
-
+	private CourseMemberListController memberListCtrl;
+	
 	private CloseableModalController cmc;
+	private StepsMainRunController invitationWizard;
 	private StepsMainRunController importMembersWizard;
 	private DedupMembersConfirmationController dedupCtrl;
 	
@@ -129,6 +117,8 @@ public class MembersOverviewController extends BasicController implements Activa
 	private final MemberListSecurityCallback secCallback;
 	
 	@Autowired
+	private InvitationModule invitationModule;
+	@Autowired
 	private RepositoryManager repositoryManager;
 	@Autowired
 	private RepositoryService repositoryService;
@@ -138,7 +128,8 @@ public class MembersOverviewController extends BasicController implements Activa
 	private BusinessGroupService businessGroupService;
 	
 	public MembersOverviewController(UserRequest ureq, WindowControl wControl, TooledStackedPanel toolbarPanel,
-			RepositoryEntry repoEntry, UserCourseEnvironment coachCourseEnv, MemberListSecurityCallback secCallback) {
+			RepositoryEntry repoEntry, UserCourseEnvironment coachCourseEnv, MemberListSecurityCallback secCallback,
+			boolean canInvite) {
 		super(ureq, wControl);
 		this.repoEntry = repoEntry;
 		this.toolbarPanel = toolbarPanel;
@@ -146,22 +137,8 @@ public class MembersOverviewController extends BasicController implements Activa
 		this.secCallback = secCallback;
 		
 		mainVC = createVelocityContainer("members_overview");
-		segmentView = SegmentViewFactory.createSegmentView("segments", mainVC, this);
-		
-		allMembersLink = LinkFactory.createLink("members.all", mainVC, this);
-		segmentView.addSegment(allMembersLink, true);
-		ownersLink = LinkFactory.createLink("owners", mainVC, this);
-		segmentView.addSegment(ownersLink, false);
-		tutorsLink = LinkFactory.createLink("tutors", mainVC, this);
-		segmentView.addSegment(tutorsLink, false);
-		participantsLink = LinkFactory.createLink("participants", mainVC, this);
-		segmentView.addSegment(participantsLink, false);
-		waitingListLink = LinkFactory.createLink("waitinglist", mainVC, this);
-		segmentView.addSegment(waitingListLink, false);
-		searchLink = LinkFactory.createLink("search", mainVC, this);
-		segmentView.addSegment(searchLink, false);
-		
-		selectedCtrl = updateAllMembers(ureq);
+
+		memberListCtrl = updateMembers(ureq);
 		
 		managed = RepositoryEntryManagedFlag.isManaged(repoEntry, RepositoryEntryManagedFlag.membersmanagement);
 		if(managed &&  isAllowedToOverrideManaged(ureq)) {
@@ -178,15 +155,40 @@ public class MembersOverviewController extends BasicController implements Activa
 		addMemberLink.setElementCssClass("o_sel_course_add_member");
 		addMemberLink.setVisible(!managed && !coachCourseEnv.isCourseReadOnly());
 		mainVC.put("addMembers", addMemberLink);
-		importMemberLink = LinkFactory.createButton("import.member", mainVC, this);
+		
+		addMemberDropdown = new Dropdown("addmore", null, false, getTranslator());
+		addMemberDropdown.setOrientation(DropdownOrientation.right);
+		addMemberDropdown.setElementCssClass("o_sel_add_more");
+		addMemberDropdown.setEmbbeded(true);
+		addMemberDropdown.setButton(true);
+		addMemberDropdown.setVisible(!managed && !coachCourseEnv.isCourseReadOnly());
+		mainVC.put("addmore", addMemberDropdown);
+		
+		importMemberLink = LinkFactory.createLink("import.member", mainVC, this);
 		importMemberLink.setIconLeftCSS("o_icon o_icon-fw o_icon_import");
 		importMemberLink.setElementCssClass("o_sel_course_import_members");
 		importMemberLink.setVisible(!managed && !coachCourseEnv.isCourseReadOnly());
-		mainVC.put("importMembers", importMemberLink);
-		dedupLink = LinkFactory.createButton("dedup.members", mainVC, this);
+		addMemberDropdown.addComponent(importMemberLink);
+		
+		if(invitationModule.isCourseInvitationEnabled() && canInvite) {
+			invitationLink = LinkFactory.createLink("invitation.member", mainVC, this);
+			invitationLink.setIconLeftCSS("o_icon o_icon-fw o_icon_mail");
+			invitationLink.setElementCssClass("o_sel_course_invitations");
+			invitationLink.setVisible(!managed && !coachCourseEnv.isCourseReadOnly());
+			addMemberDropdown.addComponent(invitationLink);
+		}
+
+		moreDropdown = new Dropdown("more", null, false, getTranslator());
+		moreDropdown.setCarretIconCSS("o_icon o_icon_commands");
+		moreDropdown.setOrientation(DropdownOrientation.right);
+		moreDropdown.setButton(true);
+		moreDropdown.setVisible(!managed && !coachCourseEnv.isCourseReadOnly());
+		mainVC.put("more", moreDropdown);
+		
+		dedupLink = LinkFactory.createLink("dedup.members", mainVC, this);
 		dedupLink.setIconLeftCSS("o_icon o_icon-fw o_icon_cleanup");
 		dedupLink.setVisible(!managed && !coachCourseEnv.isCourseReadOnly());
-		mainVC.put("dedupMembers", dedupLink);
+		moreDropdown.addComponent(dedupLink);
 		
 		putInitialPanel(mainVC);
 	}
@@ -203,55 +205,18 @@ public class MembersOverviewController extends BasicController implements Activa
 	@Override
 	public void activate(UserRequest ureq, List<ContextEntry> entries, StateEntry state) {
 		if(entries == null || entries.isEmpty()) return;
-		
-		ContextEntry currentEntry = entries.get(0);
-		String segment = currentEntry.getOLATResourceable().getResourceableTypeName();
-		List<ContextEntry> subEntries = entries.subList(1, entries.size());
-		if(SEG_ALL_MEMBERS.equals(segment)) {
-			updateAllMembers(ureq).activate(ureq, subEntries, currentEntry.getTransientState());
-			segmentView.select(allMembersLink);
-		} else if(SEG_OWNERS_MEMBERS.equals(segment)) {
-			updateOwners(ureq).activate(ureq, subEntries, currentEntry.getTransientState());
-			segmentView.select(ownersLink);
-		} else if(SEG_TUTORS_MEMBERS.equals(segment)) {
-			updateTutors(ureq).activate(ureq, subEntries, currentEntry.getTransientState());
-			segmentView.select(tutorsLink);
-		} else if(SEG_PARTICIPANTS_MEMBERS.equals(segment)) {
-			updateParticipants(ureq).activate(ureq, subEntries, currentEntry.getTransientState());
-			segmentView.select(participantsLink);
-		} else if(SEG_WAITING_MEMBERS.equals(segment)) {
-			updateWaitingList(ureq).activate(ureq, subEntries, currentEntry.getTransientState());
-			segmentView.select(waitingListLink);
-		} else if(SEG_SEARCH_MEMBERS.equals(segment)) {
-			updateSearch(ureq).activate(ureq, subEntries, currentEntry.getTransientState());
-			segmentView.select(searchLink);
-		}
+
+		updateMembers(ureq).activate(ureq, entries, null);
 	}
 
 	@Override
 	protected void event(UserRequest ureq, Component source, Event event) {
-		if(event instanceof SegmentViewEvent) {
-			SegmentViewEvent sve = (SegmentViewEvent)event;
-			String segmentCName = sve.getComponentName();
-			Component clickedLink = mainVC.getComponent(segmentCName);
-			if (clickedLink == allMembersLink) {
-				selectedCtrl = updateAllMembers(ureq);
-			} else if (clickedLink == ownersLink){
-				selectedCtrl = updateOwners(ureq);
-			} else if (clickedLink == tutorsLink){
-				selectedCtrl = updateTutors(ureq);
-			} else if (clickedLink == participantsLink) {
-				selectedCtrl = updateParticipants(ureq);
-			} else if (clickedLink == waitingListLink) {
-				selectedCtrl = updateWaitingList(ureq);
-			} else if (clickedLink == searchLink) {
-				updateSearch(ureq);
-				selectedCtrl = null;
-			}
-		} else if (source == addMemberLink) {
+		if (source == addMemberLink) {
 			doChooseMembers(ureq);
 		} else if (source == importMemberLink) {
 			doImportMembers(ureq);
+		} else if (source == invitationLink) {
+			doInvitation(ureq);
 		} else if (source == dedupLink) {
 			doDedupMembers(ureq);
 		} else if (source == overrideLink) {
@@ -263,14 +228,13 @@ public class MembersOverviewController extends BasicController implements Activa
 
 	@Override
 	protected void event(UserRequest ureq, Controller source, Event event) {
-		if(source == importMembersWizard) {
+		if(source == importMembersWizard || source == invitationWizard) {
 			if(event == Event.CANCELLED_EVENT || event == Event.DONE_EVENT || event == Event.CHANGED_EVENT) {
 				getWindowControl().pop();
-				removeAsListenerAndDispose(importMembersWizard);
-				importMembersWizard = null;
+				cleanUp();
 				if(event == Event.DONE_EVENT || event == Event.CHANGED_EVENT) {
-					if(selectedCtrl != null) {
-						selectedCtrl.reloadModel();
+					if(memberListCtrl != null) {
+						memberListCtrl.reloadModel();
 					}
 				}
 			}
@@ -287,33 +251,19 @@ public class MembersOverviewController extends BasicController implements Activa
 	}
 	
 	private void cleanUp() {
+		removeAsListenerAndDispose(importMembersWizard);
+		removeAsListenerAndDispose(invitationWizard);
 		removeAsListenerAndDispose(dedupCtrl);
 		removeAsListenerAndDispose(cmc);
+		importMembersWizard = null;
+		invitationWizard = null;
 		dedupCtrl = null;
 		cmc = null;
 	}
 	
 	protected void reloadMembers() {
-		if(allMemberListCtrl != null) {
-			allMemberListCtrl.reloadModel();
-		}
-		if(ownersCtrl != null) {
-			ownersCtrl.reloadModel();
-		}
-		if(tutorsCtrl != null) {
-			tutorsCtrl.reloadModel();
-		}
-		if(participantsCtrl != null) {
-			participantsCtrl.reloadModel();
-		}
-		if(waitingCtrl != null) {
-			waitingCtrl.reloadModel();
-		}
-		if(selectedCtrl != null) {
-			selectedCtrl.reloadModel();
-		}
-		if(searchCtrl != null) {
-			searchCtrl.reloadModel();
+		if(memberListCtrl != null) {
+			memberListCtrl.reloadModel();
 		}
 	}
 	
@@ -336,26 +286,8 @@ public class MembersOverviewController extends BasicController implements Activa
 		dedupLink.setVisible(overrideManaged);
 		mainVC.setDirty(true);
 		
-		if(allMemberListCtrl != null) {
-			allMemberListCtrl.overrideManaged(ureq, overrideManaged);
-		}
-		if(ownersCtrl != null) {
-			ownersCtrl.overrideManaged(ureq, overrideManaged);
-		}
-		if(tutorsCtrl != null) {
-			tutorsCtrl.overrideManaged(ureq, overrideManaged);
-		}
-		if(participantsCtrl != null) {
-			participantsCtrl.overrideManaged(ureq, overrideManaged);
-		}
-		if(waitingCtrl != null) {
-			waitingCtrl.overrideManaged(ureq, overrideManaged);
-		}
-		if(selectedCtrl != null) {
-			selectedCtrl.overrideManaged(ureq, overrideManaged);
-		}
-		if(searchCtrl != null) {
-			searchCtrl.overrideManaged(ureq, overrideManaged);
+		if(memberListCtrl != null) {
+			memberListCtrl.overrideManaged(ureq, overrideManaged);
 		}
 	}
 
@@ -427,6 +359,18 @@ public class MembersOverviewController extends BasicController implements Activa
 		switchToAllMembers(ureq);
 	}
 	
+	protected void doInvitation(UserRequest ureq) {
+		removeAsListenerAndDispose(invitationWizard);
+
+		InvitationContext invitationContext = InvitationContext.valueOf(repoEntry, overrideManaged);
+		Step start = new Invitation_1_MailStep(ureq, invitationContext);
+		StepRunnerCallback finish = new InvitationFinishCallback(invitationContext);
+		invitationWizard = new StepsMainRunController(ureq, getWindowControl(), start, finish, null,
+				translate("invitation.member"), "o_sel_course_member_invitation_wizard");
+		listenTo(invitationWizard);
+		getWindowControl().pushAsModalDialog(invitationWizard.getInitialComponent());
+	}
+	
 	protected void doDedupMembers(UserRequest ureq) {
 		int numOfDuplicate = businessGroupService.countDuplicateMembers(repoEntry, true, true);
 		if(numOfDuplicate <= 0) {
@@ -445,122 +389,29 @@ public class MembersOverviewController extends BasicController implements Activa
 	protected void dedupMembers(UserRequest ureq, boolean coaches, boolean participants) {
 		businessGroupService.dedupMembers(ureq.getIdentity(), repoEntry, coaches, participants);
 		showInfo("dedup.done");
-		if(selectedCtrl != null) {
-			selectedCtrl.reloadModel();
+		if(memberListCtrl != null) {
+			memberListCtrl.reloadModel();
 		}
 	}
 	
-	private void switchToAllMembers(UserRequest ureq) {
+	public void switchToAllMembers(UserRequest ureq) {
 		DBFactory.getInstance().commit();//make sure all is on the DB before reloading
-		if(selectedCtrl != null && selectedCtrl == allMemberListCtrl) {
-			allMemberListCtrl.reloadModel();
-		} else {
-			selectedCtrl = updateAllMembers(ureq);
-			segmentView.select(allMembersLink);
-		}
+		memberListCtrl.switchToAllMembers(ureq);
 	}
 	
-	private AbstractMemberListController updateAllMembers(UserRequest ureq) {
-		if(allMemberListCtrl == null) {
+	private CourseMemberListController updateMembers(UserRequest ureq) {
+		if(memberListCtrl == null) {
 			OLATResourceable ores = OresHelper.createOLATResourceableInstance(SEG_ALL_MEMBERS, 0l);
 			ThreadLocalUserActivityLogger.addLoggingResourceInfo(LoggingResourceable.wrapBusinessPath(ores));
 			WindowControl bwControl = BusinessControlFactory.getInstance().createBusinessWindowControl(ores, null, getWindowControl());
 			SearchMembersParams searchParams = new SearchMembersParams(true, GroupRoles.owner, GroupRoles.coach, GroupRoles.participant);
-			allMemberListCtrl = new MemberListWithOriginFilterController(ureq, bwControl, toolbarPanel, repoEntry, coachCourseEnv, secCallback, searchParams, null);
-			listenTo(allMemberListCtrl);
+			memberListCtrl = new CourseMemberListController(ureq, bwControl, toolbarPanel, repoEntry, coachCourseEnv, secCallback, searchParams, null);
+			listenTo(memberListCtrl);
 		}
 		
-		allMemberListCtrl.reloadModel();
-		allMemberListCtrl.overrideManaged(ureq, overrideManaged);
-		mainVC.put("membersCmp", allMemberListCtrl.getInitialComponent());
-		addToHistory(ureq, allMemberListCtrl);
-		return allMemberListCtrl;
-	}
-	
-	private AbstractMemberListController updateOwners(UserRequest ureq) {
-		if(ownersCtrl == null) {
-			OLATResourceable ores = OresHelper.createOLATResourceableInstance(SEG_OWNERS_MEMBERS, 0l);
-			ThreadLocalUserActivityLogger.addLoggingResourceInfo(LoggingResourceable.wrapBusinessPath(ores));
-			WindowControl bwControl = BusinessControlFactory.getInstance().createBusinessWindowControl(ores, null, getWindowControl());
-			SearchMembersParams searchParams = new SearchMembersParams(false, GroupRoles.owner);
-			String infos = translate("owners.infos");
-			ownersCtrl = new MemberListController(ureq, bwControl, toolbarPanel, repoEntry, coachCourseEnv, secCallback, searchParams, infos);
-			listenTo(ownersCtrl);
-		}
-		
-		ownersCtrl.reloadModel();
-		ownersCtrl.overrideManaged(ureq, overrideManaged);
-		mainVC.put("membersCmp", ownersCtrl.getInitialComponent());
-		addToHistory(ureq, ownersCtrl);
-		return ownersCtrl;
-	}
-
-	private AbstractMemberListController updateTutors(UserRequest ureq) {
-		if(tutorsCtrl == null) {
-			OLATResourceable ores = OresHelper.createOLATResourceableInstance(SEG_TUTORS_MEMBERS, 0l);
-			ThreadLocalUserActivityLogger.addLoggingResourceInfo(LoggingResourceable.wrapBusinessPath(ores));
-			WindowControl bwControl = BusinessControlFactory.getInstance().createBusinessWindowControl(ores, null, getWindowControl());
-			SearchMembersParams searchParams = new SearchMembersParams(false, GroupRoles.coach);
-			String infos = translate("tutors.infos");
-			tutorsCtrl = new MemberListWithOriginFilterController(ureq, bwControl, toolbarPanel, repoEntry, coachCourseEnv, secCallback, searchParams, infos);
-			listenTo(tutorsCtrl);
-		}
-		
-		tutorsCtrl.reloadModel();
-		tutorsCtrl.overrideManaged(ureq, overrideManaged);
-		mainVC.put("membersCmp", tutorsCtrl.getInitialComponent());
-		addToHistory(ureq, tutorsCtrl);
-		return tutorsCtrl;
-	}
-	
-	private AbstractMemberListController updateParticipants(UserRequest ureq) {
-		if(participantsCtrl == null) {
-			OLATResourceable ores = OresHelper.createOLATResourceableInstance(SEG_PARTICIPANTS_MEMBERS, 0l);
-			ThreadLocalUserActivityLogger.addLoggingResourceInfo(LoggingResourceable.wrapBusinessPath(ores));
-			WindowControl bwControl = BusinessControlFactory.getInstance().createBusinessWindowControl(ores, null, getWindowControl());
-			SearchMembersParams searchParams = new SearchMembersParams(false, GroupRoles.participant);
-			String infos = translate("participants.infos");
-			participantsCtrl = new MemberListWithOriginFilterController(ureq, bwControl, toolbarPanel, repoEntry, coachCourseEnv, secCallback, searchParams, infos);
-			listenTo(participantsCtrl);
-		}
-		
-		participantsCtrl.reloadModel();
-		participantsCtrl.overrideManaged(ureq, overrideManaged);
-		mainVC.put("membersCmp", participantsCtrl.getInitialComponent());
-		addToHistory(ureq, participantsCtrl);
-		return participantsCtrl;
-	}
-	
-	private AbstractMemberListController updateWaitingList(UserRequest ureq) {
-		if(waitingCtrl == null) {
-			OLATResourceable ores = OresHelper.createOLATResourceableInstance(SEG_WAITING_MEMBERS, 0l);
-			ThreadLocalUserActivityLogger.addLoggingResourceInfo(LoggingResourceable.wrapBusinessPath(ores));
-			WindowControl bwControl = BusinessControlFactory.getInstance().createBusinessWindowControl(ores, null, getWindowControl());
-			SearchMembersParams searchParams = new SearchMembersParams(false, GroupRoles.waiting);
-			String infos = translate("waiting.infos");
-			waitingCtrl = new MemberListController(ureq, bwControl, toolbarPanel, repoEntry, coachCourseEnv, secCallback, searchParams, infos);
-			listenTo(waitingCtrl);
-		}
-		
-		waitingCtrl.reloadModel();
-		waitingCtrl.overrideManaged(ureq, overrideManaged);
-		mainVC.put("membersCmp", waitingCtrl.getInitialComponent());
-		addToHistory(ureq, waitingCtrl);
-		return waitingCtrl;
-	}
-	
-	private AbstractMemberListController updateSearch(UserRequest ureq) {
-		if(searchCtrl == null) {
-			OLATResourceable ores = OresHelper.createOLATResourceableInstance(SEG_SEARCH_MEMBERS, 0l);
-			ThreadLocalUserActivityLogger.addLoggingResourceInfo(LoggingResourceable.wrapBusinessPath(ores));
-			WindowControl bwControl = BusinessControlFactory.getInstance().createBusinessWindowControl(ores, null, getWindowControl());
-			searchCtrl = new MemberSearchController(ureq, bwControl, toolbarPanel, repoEntry, coachCourseEnv, secCallback);
-			listenTo(searchCtrl);
-		}
-	
-		searchCtrl.overrideManaged(ureq, overrideManaged);
-		mainVC.put("membersCmp", searchCtrl.getInitialComponent());
-		addToHistory(ureq, searchCtrl);
-		return searchCtrl;
+		memberListCtrl.overrideManaged(ureq, overrideManaged);
+		mainVC.put("membersCmp", memberListCtrl.getInitialComponent());
+		addToHistory(ureq, memberListCtrl);
+		return memberListCtrl;
 	}
 }

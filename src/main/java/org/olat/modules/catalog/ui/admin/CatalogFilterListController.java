@@ -117,9 +117,9 @@ public class CatalogFilterListController extends FormBasicController {
 		FlexiTableColumnModel columnsModel = FlexiTableDataModelFactory.createFlexiTableColumnModel();
 		columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(CatalogFilterCols.upDown));
 		columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(CatalogFilterCols.type));
-		columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(CatalogFilterCols.details
-				));
+		columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(CatalogFilterCols.details));
 		columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(CatalogFilterCols.enabled));
+		columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel(false, CatalogFilterCols.defaultVisibile, null));
 		
 		columnsModel.addFlexiColumnModel(new DefaultFlexiColumnModel("table.header.edit", -1, CMD_EDIT,
 				new StaticFlexiCellRenderer("", CMD_EDIT, "o_icon o_icon-lg o_icon_edit", null)));
@@ -157,7 +157,7 @@ public class CatalogFilterListController extends FormBasicController {
 		addFilterDropdown.setVisible(addFilterDropdown.size() > 0);
 	}
 
-	private void loadModel() {
+	void loadModel() {
 		List<CatalogFilter> catalogFilters = catalogService.getCatalogFilters(new CatalogFilterSearchParams());
 		Collections.sort(catalogFilters);
 		List<CatalogFilterRow> rows = new ArrayList<>(catalogFilters.size());

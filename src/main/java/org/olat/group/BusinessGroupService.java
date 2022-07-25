@@ -124,6 +124,10 @@ public interface BusinessGroupService {
 			boolean ownersPublis, boolean participantsPublic, boolean waitingListPublic,
 			boolean download);
 	
+	public BusinessGroup updateOptions(BusinessGroup group,
+			boolean invitationByCoachWithAuthorsRightsEnabled,
+			boolean lti13DeploymentByCoachWithAuthorsRightsEnabled);
+	
 	public BusinessGroup updateAllowToLeaveBusinessGroup(BusinessGroup group, boolean allowLeaving);
 	
 	/**

@@ -91,6 +91,8 @@ create table if not exists o_gp_business (
    maxparticipants integer,
    waitinglist_enabled bit,
    autocloseranks_enabled bit,
+   invitations_coach_enabled bool default true not null,
+   lti_deployment_coach_enabled bool default false not null,
    ownersintern bit not null default 0,
    participantsintern bit not null default 0,
    waitingintern bit not null default 0,
@@ -518,6 +520,8 @@ create table if not exists o_repositoryentry (
    candownload bit not null,
    cancopy bit not null,
    canreference bit not null,
+   invitations_owner_enabled bool default true not null,
+   lti_deployment_owner_enabled bool default false not null,
    deletiondate datetime default null,
    fk_deleted_by bigint default null,
    fk_educational_type bigint default null,
@@ -869,6 +873,11 @@ create table if not exists o_bs_invitation (
    first_name varchar(64),
    last_name varchar(64),
    mail varchar(128),
+   i_type varchar(32) default 'binder' not null,
+   i_url varchar(512),
+   i_roles varchar(255),
+   i_registration bool default false not null,
+   i_additional_infos mediumtext,
    fk_group_id bigint,
    fk_identity_id bigint,
    primary key (id)
@@ -1135,7 +1144,7 @@ create table o_ca_launcher (
    c_identifier varchar(32),
    c_sort_order integer,
    c_enabled bool not null default true,
-   c_config varchar(1024),
+   c_config varchar(4000),
    primary key (id)
 );
 create table o_ca_filter (
@@ -1146,7 +1155,7 @@ create table o_ca_filter (
    c_sort_order integer,
    c_enabled bool not null default true,
    c_default_visible bool not null default true,
-   c_config varchar(1024),
+   c_config varchar(4000),
    primary key (id)
 );
 

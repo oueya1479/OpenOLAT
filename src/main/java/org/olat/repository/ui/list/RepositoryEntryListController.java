@@ -94,6 +94,7 @@ import org.olat.course.CorruptedCourseException;
 import org.olat.course.CourseFactory;
 import org.olat.course.ICourse;
 import org.olat.course.condition.ConditionNodeAccessProvider;
+import org.olat.modules.taxonomy.ui.TaxonomyUIFactory;
 import org.olat.repository.RepositoryEntry;
 import org.olat.repository.RepositoryEntryEducationalType;
 import org.olat.repository.RepositoryEntryStatusEnum;
@@ -165,6 +166,7 @@ public class RepositoryEntryListController extends FormBasicController
 			SearchMyRepositoryEntryViewParams searchParams, boolean load, 
 			boolean withSearch, boolean withPresets, boolean withSavedSettings, String name, BreadcrumbPanel stackPanel) {
 		super(ureq, wControl, "repoentry_table");
+		setTranslator(Util.createPackageTranslator(TaxonomyUIFactory.class, getLocale(), getTranslator()));
 		setTranslator(Util.createPackageTranslator(RepositoryManager.class, getLocale(), getTranslator()));
 		mapperThumbnailKey = mapperService.register(null, "repositoryentryImage", new RepositoryEntryImageMapper());
 		this.name = name;
@@ -300,7 +302,7 @@ public class RepositoryEntryListController extends FormBasicController
 		filters.add(new FlexiTableFilter(translate("filter.booked.participant"), Filter.asParticipant.name()));
 		filters.add(new FlexiTableFilter(translate("filter.booked.coach"), Filter.asCoach.name()));
 		filters.add(new FlexiTableFilter(translate("filter.booked.author"), Filter.asAuthor.name()));
-		if(!searchParams.isMembershipMandatory()) {
+		if(!searchParams.isMembershipMandatory() && !searchParams.isMembershipOnly()) {
 			filters.add(new FlexiTableFilter(translate("filter.not.booked"), Filter.notBooked.name()));
 		}
 		filters.add(FlexiTableFilter.SPACER);
@@ -390,7 +392,7 @@ public class RepositoryEntryListController extends FormBasicController
 		bookingValues.add(SelectionValues.entry(Filter.asParticipant.name(), translate("filter.booked.participant")));
 		bookingValues.add(SelectionValues.entry(Filter.asCoach.name(), translate("filter.booked.coach")));
 		bookingValues.add(SelectionValues.entry(Filter.asAuthor.name(), translate("filter.booked.author")));
-		if(!searchParams.isMembershipMandatory()) {
+		if(!searchParams.isMembershipMandatory() && !searchParams.isMembershipOnly()) {
 			bookingValues.add(SelectionValues.entry(Filter.notBooked.name(), translate("filter.not.booked")));
 		}
 		filters.add(new FlexiTableSingleSelectionFilter(translate("cif.resources.membership"),
@@ -675,7 +677,7 @@ public class RepositoryEntryListController extends FormBasicController
 		searchParams.setIdAndRefs(se.getId());
 		searchParams.setAuthor(se.getAuthor());
 		searchParams.setText(se.getDisplayname());
-		searchParams.setMembershipMandatory(se.isMembershipMandatory());
+		searchParams.setMembershipMandatory(se.isMembershipMandatory() || searchParams.isMembershipOnly());
 		if(se.getClosed() != null) {
 			if(se.getClosed().booleanValue()) {
 				searchParams.setEntryStatus(new RepositoryEntryStatusEnum[] { RepositoryEntryStatusEnum.closed });
@@ -693,7 +695,7 @@ public class RepositoryEntryListController extends FormBasicController
 		addToHistory(ureq, state);
 	}
 	
-	protected void selectFilterTab(UserRequest ureq, FlexiFiltersTab tab) {
+	public void selectFilterTab(UserRequest ureq, FlexiFiltersTab tab) {
 		if(tab == null) return;
 		tableEl.setSelectedFilterTab(ureq, tab);
 	}

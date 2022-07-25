@@ -607,10 +607,15 @@ public class OOGraphene {
 	 * @param browser The browser
 	 */
 	public static final void selectNextMonthInDatePicker(WebDriver browser) {
-		By nextBy = By.cssSelector("#ui-datepicker-div div.ui-datepicker-header a.ui-datepicker-next");
-		waitElement(nextBy, browser);
-		browser.findElement(nextBy).click();
-		waitElement(nextBy, browser);
+		try {
+			By nextBy = By.cssSelector("#ui-datepicker-div div.ui-datepicker-header a.ui-datepicker-next");
+			waitElement(nextBy, browser);
+			browser.findElement(nextBy).click();
+			waitElement(nextBy, browser);
+		} catch (Exception e) {
+			takeScreenshot("Select next month", browser);
+			throw e;
+		}
 	}
 	
 	/**
@@ -620,14 +625,19 @@ public class OOGraphene {
 	 * @param browser The browser
 	 */
 	public static final void selectDayInDatePicker(int day, WebDriver browser) {
-		By datePickerBy = By.id("ui-datepicker-div");
-		waitElement(datePickerBy, browser);
-		
-		By dayBy = By.xpath("//div[@id='ui-datepicker-div']//td//a[normalize-space(text())='" + day + "']");
-		waitElement(dayBy, browser);
-		browser.findElement(dayBy).click();
-		
-		waitElementDisappears(datePickerBy, 5, browser);
+		try {
+			By datePickerBy = By.id("ui-datepicker-div");
+			waitElement(datePickerBy, browser);
+			
+			By dayBy = By.xpath("//div[@id='ui-datepicker-div']//td//a[normalize-space(text())='" + day + "']");
+			waitElement(dayBy, browser);
+			browser.findElement(dayBy).click();
+			
+			waitElementDisappears(datePickerBy, 5, browser);
+		} catch (Exception e) {
+			takeScreenshot("Select day in date picker", browser);
+			throw e;
+		}
 	}
 	
 	public static final void flexiTableSelectAll(WebDriver browser) {

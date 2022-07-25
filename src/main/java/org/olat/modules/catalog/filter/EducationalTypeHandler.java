@@ -70,7 +70,7 @@ public class EducationalTypeHandler implements CatalogFilterHandler {
 
 	@Override
 	public int getSortOrder() {
-		return 101;
+		return 120;
 	}
 
 	@Override

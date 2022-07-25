@@ -19,9 +19,11 @@
  */
 package org.olat.modules.zoom;
 
+import org.olat.core.id.User;
 import org.olat.group.BusinessGroup;
 import org.olat.ims.lti13.LTI13Tool;
 import org.olat.ims.lti13.LTI13ToolDeployment;
+import org.olat.modules.zoom.manager.ZoomProfileDAO;
 import org.olat.repository.RepositoryEntry;
 
 import java.util.List;
@@ -61,9 +63,11 @@ public interface ZoomManager {
 
     List<ZoomProfile> getProfiles();
 
+    List<ZoomProfileDAO.ZoomProfileWithConfigCount> getProfilesWithConfigCount();
+
     KeysAndValues getProfilesAsKeysAndValues();
 
-    void initializeConfig(RepositoryEntry entry, String subIdent, BusinessGroup businessGroup, ApplicationType applicationType);
+    void initializeConfig(RepositoryEntry entry, String subIdent, BusinessGroup businessGroup, ApplicationType applicationType, User user);
 
     ZoomProfile updateProfile(ZoomProfile zoomProfile);
 
@@ -84,6 +88,8 @@ public interface ZoomManager {
     void deleteConfig(RepositoryEntry entry, String subIdent, BusinessGroup businessGroup);
 
     ZoomConnectionResponse checkConnection(String ltiKey, String clientId, String ltiMessageHint);
+
+    String getMailDomainForUser(User user);
 
     class ZoomConnectionResponse {
 

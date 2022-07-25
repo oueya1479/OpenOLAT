@@ -36,6 +36,7 @@ import org.olat.core.commons.persistence.DB;
 import org.olat.core.commons.persistence.PersistenceHelper;
 import org.olat.core.commons.persistence.QueryBuilder;
 import org.olat.core.id.OrganisationRef;
+import org.olat.core.util.DateUtils;
 import org.olat.core.util.StringHelper;
 import org.olat.modules.catalog.CatalogRepositoryEntrySearchParams;
 import org.olat.modules.catalog.CatalogRepositoryEntrySearchParams.OrderBy;
@@ -70,20 +71,29 @@ public class CatalogRepositoryEntryQueries {
 				.getSingleResult();
 		return Integer.valueOf(count.intValue());
 	}
+	
+	public List<String> loadTaxonomyLevelPathKeysWithOffers(CatalogRepositoryEntrySearchParams searchParams) {
+		TypedQuery<String> query = createMyViewQuery(searchParams, String.class);
+		return query.getResultList();
+	}
 
 	public List<RepositoryEntry> loadRepositoryEntries(CatalogRepositoryEntrySearchParams searchParams, int firstResult, int maxResults) {
-		TypedQuery<RepositoryEntry> query = createMyViewQuery(searchParams, RepositoryEntry.class);
+		TypedQuery<Object[]> query = createMyViewQuery(searchParams, Object[].class);
 		query.setFlushMode(FlushModeType.COMMIT)
 			.setFirstResult(firstResult);
 		if(maxResults > 0) {
 			query.setMaxResults(maxResults);
 		}
 		
-		return query.getResultList();
+		return query.getResultList().stream()
+				.map(result -> (RepositoryEntry)result[0])
+				.collect(Collectors.toList());
 	}
 
 	protected <T> TypedQuery<T> createMyViewQuery(CatalogRepositoryEntrySearchParams searchParams, Class<T> type) {
 		boolean count = Number.class.equals(type);
+		boolean countTaxonomyLevels= String.class.equals(type);
+		boolean selectRepositoryEntries = !count && !countTaxonomyLevels;
 		QueryBuilder sb = new QueryBuilder(2048);
 		
 		if(count) {
@@ -91,8 +101,24 @@ public class CatalogRepositoryEntryQueries {
 			sb.append(" from repositoryentry as v");
 			sb.append(" inner join v.olatResource as res");
 			sb.append(" left join v.lifecycle as lifecycle");
+		} else if (countTaxonomyLevels) {
+			sb.append("select reToTax.taxonomyLevel.materializedPathKeys");
+			sb.append(" from repositoryentry as v");
+			sb.append(" inner join repositoryentrytotaxonomylevel as reToTax");
+			sb.append("         on reToTax.entry.key = v.key");
+			sb.append(" inner join v.olatResource as res");
+			sb.append(" left join v.lifecycle as lifecycle");
+			sb.append(" left join v.educationalType as educationalType");
 		} else {
 			sb.append("select v");
+			if (OrderBy.popularCourses == searchParams.getOrderBy()) {
+				sb.append(", (select sum(stat.value) ");
+				sb.append("     from dailystat as stat ");
+				sb.append("    where stat.resId = v.key and stat.day > :statDay");
+				sb.append("  ) as popularCourses");
+			} else {
+				sb.append(", 0 as popularCourses");
+			}
 			sb.append(" from repositoryentry as v");
 			sb.append(" inner join fetch v.olatResource as res");
 			sb.append(" left join fetch v.lifecycle as lifecycle");
@@ -202,7 +228,11 @@ public class CatalogRepositoryEntryQueries {
 			sb.append(")");
 		}
 		
-		if(!count) {
+		if(countTaxonomyLevels) {
+			sb.append(" group by reToTax.taxonomyLevel.materializedPathKeys");
+			sb.append(" having count(*) > 0");
+		}
+		if(selectRepositoryEntries) {
 			appendOrderBy(searchParams, sb);
 		}
 		
@@ -252,6 +282,9 @@ public class CatalogRepositoryEntryQueries {
 		}
 		if (serachTaxonomyLevelI18nSuffix != null) {
 			dbQuery.setParameter("serachTaxonomyLevelI18nSuffix", serachTaxonomyLevelI18nSuffix);
+		}
+		if (selectRepositoryEntries && OrderBy.popularCourses == searchParams.getOrderBy()) {
+			dbQuery.setParameter("statDay", DateUtils.addDays(new Date(), -28));
 		}
 		return dbQuery;
 	}
@@ -397,6 +430,10 @@ public class CatalogRepositoryEntryQueries {
 					sb.append(" order by v.statusPublishedDate ");
 					appendAsc(sb, asc).append(" nulls last, lower(v.displayname) asc, v.key asc");
 					break;
+				case popularCourses:
+					sb.append(" order by popularCourses ");
+					appendAsc(sb, asc).append(" nulls last, lower(v.displayname) asc, v.key asc");
+					break;
 				case random:
 					sb.append(" order by ").append(PersistenceHelper.getOrderByRandom(dbInstance));
 					break;
@@ -407,6 +444,12 @@ public class CatalogRepositoryEntryQueries {
 						sb.append(" order by lower(v.displayname) desc, lifecycle.validFrom desc nulls last, lower(v.externalRef) desc nulls last, v.key asc");
 					}
 					break;
+			}
+		} else {
+			if(asc) {
+				sb.append(" order by lower(v.displayname) asc, lifecycle.validFrom desc nulls last, lower(v.externalRef) asc nulls last, v.key asc");
+			} else {
+				sb.append(" order by lower(v.displayname) desc, lifecycle.validFrom desc nulls last, lower(v.externalRef) desc nulls last, v.key asc");
 			}
 		}
 	}

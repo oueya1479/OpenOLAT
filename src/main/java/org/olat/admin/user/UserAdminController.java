@@ -28,6 +28,8 @@ package org.olat.admin.user;
 import java.util.Collections;
 import java.util.List;
 
+import org.olat.admin.user.UserShortDescription.Builder;
+import org.olat.admin.user.UserShortDescription.Rows;
 import org.olat.admin.user.course.CourseOverviewController;
 import org.olat.admin.user.groups.GroupOverviewController;
 import org.olat.basesecurity.BaseSecurity;
@@ -59,6 +61,7 @@ import org.olat.core.id.Roles;
 import org.olat.core.id.context.BusinessControlFactory;
 import org.olat.core.id.context.ContextEntry;
 import org.olat.core.id.context.StateEntry;
+import org.olat.core.util.Formatter;
 import org.olat.core.util.WebappHelper;
 import org.olat.core.util.resource.OresHelper;
 import org.olat.core.util.vfs.QuotaManager;
@@ -72,6 +75,7 @@ import org.olat.modules.grading.GradingModule;
 import org.olat.modules.grading.ui.GraderUserOverviewController;
 import org.olat.modules.lecture.LectureModule;
 import org.olat.modules.lecture.ui.ParticipantLecturesOverviewController;
+import org.olat.modules.portfolio.ui.shared.InviteeBindersAdminController;
 import org.olat.modules.taxonomy.TaxonomyModule;
 import org.olat.modules.taxonomy.ui.CompetencesOverviewController;
 import org.olat.properties.Property;
@@ -83,10 +87,14 @@ import org.olat.user.ProfileFormController;
 import org.olat.user.PropFoundEvent;
 import org.olat.user.UserManager;
 import org.olat.user.UserPropertiesController;
+import org.olat.user.ui.admin.ReloadIdentityEvent;
+import org.olat.user.ui.admin.UserAccountController;
+import org.olat.user.ui.admin.UserRolesController;
 import org.olat.user.ui.admin.authentication.UserAuthenticationsEditorController;
 import org.olat.user.ui.admin.lifecycle.ConfirmDeleteUserController;
 import org.olat.user.ui.admin.lifecycle.IdentityDeletedEvent;
 import org.olat.user.ui.data.UserDataExportController;
+import org.olat.user.ui.identity.ChangeInviteePrefsController;
 import org.olat.user.ui.identity.UserRelationsController;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -109,6 +117,7 @@ public class UserAdminController extends BasicController implements Activateable
 	private static final String NLS_FOUND_PROPERTY		= "found.property";
 	private static final String NLS_EDIT_UPROFILE		= "edit.uprofile";
 	private static final String NLS_EDIT_UPREFS			= "edit.uprefs";
+	private static final String NLS_EDIT_UACCOUNT		= "edit.uaccount";
 	private static final String NLS_EDIT_UPCRED 		= "edit.upwd";
 	private static final String NLS_EDIT_UAUTH 			= "edit.uauth";
 	private static final String NLS_EDIT_UPROP			= "edit.uprop";
@@ -125,7 +134,7 @@ public class UserAdminController extends BasicController implements Activateable
 	private static final String NLS_VIEW_COMPETENCES	= "view.competences";
 	private static final String NLS_VIEW_CURRICULUM		= "view.curriculum";
 	private static final String NLS_VIEW_GRADER			= "view.grader";
-	
+	private static final String NLS_VIEW_PORTFOLIO		= "view.portfolio";
 
 	private VelocityContainer myContent;
 	private final TooledStackedPanel stackPanel;
@@ -135,24 +144,27 @@ public class UserAdminController extends BasicController implements Activateable
 	private final Roles editedRoles;
 	private final boolean allowedToManage;
 	private int rolesTab;
+	private int accountTab;
 
 	private Link deleteLink;
+	private Link backLink;
+	private Link exportDataButton;
 	
 	// controllers used in tabbed pane
 	private TabbedPane userTabP;
 	private Controller prefsCtr;
 	private Controller pwdCtr;
 	private Controller quotaCtr;
-	private Controller rolesCtr;
 	private Controller propertiesCtr;
 	private Controller userShortDescrCtr;
+	private UserRolesController rolesCtr;
+	private UserAccountController accountCtrl;
 	private CurriculumListController curriculumCtr;
 	private UserRelationsController relationsCtrl;
 	private DisplayPortraitController portraitCtr;
+	private InviteeBindersAdminController portfolioCtr;
 	private GraderUserOverviewController graderOverviewCtrl;
 	private UserAuthenticationsEditorController authenticationsCtr;
-	private Link backLink;
-	private Link exportDataButton;
 	private ProfileFormController profileCtr;
 	private ProfileAndHomePageEditController userProfileCtr;
 	private CourseOverviewController courseCtr;
@@ -195,6 +207,7 @@ public class UserAdminController extends BasicController implements Activateable
 	 */
 	public UserAdminController(UserRequest ureq, WindowControl wControl, TooledStackedPanel stackPanel, Identity identity) {
 		super(ureq, wControl);
+		setTranslator(userManager.getPropertyHandlerTranslator(getTranslator()));
 		this.stackPanel = stackPanel;
 		managerRoles = ureq.getUserSession().getRoles();
 		editedIdentity = identity;
@@ -209,14 +222,11 @@ public class UserAdminController extends BasicController implements Activateable
 				exportDataButton.setIconLeftCSS("o_icon o_icon_download");
 			}
 			
-			userShortDescrCtr = new UserShortDescription(ureq, wControl, identity);
-			listenTo(userShortDescrCtr);
-			myContent.put("userShortDescription", userShortDescrCtr.getInitialComponent());
-
 			setBackButtonEnabled(true); // default
 			setShowTitle(true);
 			initTabbedPane(editedIdentity, ureq);
-			exposeUserDataToVC(ureq, editedIdentity);
+			// Exposer portrait and short description
+			exposeUserDataToVC(ureq, editedIdentity, editedRoles);
 			putInitialPanel(myContent);
 		} else {
 			String supportAddr = WebappHelper.getMailConfig("mailSupport");
@@ -252,6 +262,10 @@ public class UserAdminController extends BasicController implements Activateable
 		} else if("roles".equalsIgnoreCase(entryPoint) && rolesTab >= 0) {
 			List<ContextEntry> tabEntries = BusinessControlFactory.getInstance()
 					.createCEListFromString(OresHelper.createOLATResourceableInstance("tab", Long.valueOf(rolesTab)));
+			userTabP.activate(ureq, tabEntries, state);
+		} else if("account".equalsIgnoreCase(entryPoint) && accountTab >= 0) {
+			List<ContextEntry> tabEntries = BusinessControlFactory.getInstance()
+					.createCEListFromString(OresHelper.createOLATResourceableInstance("tab", Long.valueOf(accountTab)));
 			userTabP.activate(ureq, tabEntries, state);
 		} else if("table".equalsIgnoreCase(entryPoint)) {
 			if(entries.size() > 2) {
@@ -307,9 +321,13 @@ public class UserAdminController extends BasicController implements Activateable
 		} else if (userProfileCtr == source || authenticationsCtr == source) {
 			if (event == Event.DONE_EVENT) {
 				//reload profile data on top
-				editedIdentity = securityManager.loadIdentityByKey(editedIdentity.getKey());
-				exposeUserDataToVC(ureq, editedIdentity);
-				userProfileCtr.resetForm(ureq, editedIdentity);
+				reloadEditedIdentity(ureq);
+			}
+		} else if(accountCtrl == source) {
+			if(event instanceof ReloadIdentityEvent) {
+				fireEvent(ureq, event);
+			} else if (event == Event.DONE_EVENT || event == Event.CHANGED_EVENT) {
+				reloadEditedIdentity(ureq);
 				fireEvent(ureq, Event.CHANGED_EVENT);
 			}
 		} else if(source == exportDataCtrl) {
@@ -335,6 +353,13 @@ public class UserAdminController extends BasicController implements Activateable
 		cmc = null;
 	}
 	
+	private void reloadEditedIdentity(UserRequest ureq) {
+		editedIdentity = securityManager.loadIdentityByKey(editedIdentity.getKey());
+		exposeUserDataToVC(ureq, editedIdentity, editedRoles);
+		userProfileCtr.resetForm(ureq, editedIdentity);
+		fireEvent(ureq, Event.CHANGED_EVENT);
+	}
+	
 	private void doExportData(UserRequest ureq) {
 		if(guardModalController(exportDataCtrl)) return;
 		
@@ -342,7 +367,7 @@ public class UserAdminController extends BasicController implements Activateable
 		listenTo(exportDataCtrl);
 		
 		String fullname = userManager.getUserDisplayName(editedIdentity);
-		String title = translate("export.user.data.title", new String[] { fullname });
+		String title = translate("export.user.data.title", fullname);
 		cmc = new CloseableModalController(getWindowControl(), translate("close"), exportDataCtrl.getInitialComponent(),
 				true, title);
 		listenTo(cmc);
@@ -357,7 +382,7 @@ public class UserAdminController extends BasicController implements Activateable
 		listenTo(confirmDeleteUserCtlr);
 		
 		String fullname = userManager.getUserDisplayName(editedIdentity);
-		String title = translate("delete.user.data.title", new String[] { fullname });
+		String title = translate("delete.user.data.title", fullname);
 		cmc = new CloseableModalController(getWindowControl(), translate("close"), confirmDeleteUserCtlr.getInitialComponent(),
 				true, title);
 		listenTo(cmc);
@@ -407,17 +432,22 @@ public class UserAdminController extends BasicController implements Activateable
 		userTabP = new TabbedPane("userTabP", ureq.getLocale());
 		userTabP.addListener(this);
 	
+		// Edited identity as "user" role
 		boolean isAdminOf = managerRoles.isManagerOf(OrganisationRoles.administrator, editedRoles);
 		boolean isPrincipalOf = managerRoles.isManagerOf(OrganisationRoles.principal, editedRoles);
 		boolean isUserManagerOf = managerRoles.isManagerOf(OrganisationRoles.usermanager, editedRoles);
 		boolean isRolesManagerOf = managerRoles.isManagerOf(OrganisationRoles.rolesmanager, editedRoles);
+		
+		boolean isInvitee = editedRoles.isInviteeOnly();
+		boolean isGuest = editedRoles.isGuestOnly();
 
 		if(isAdminOf || isUserManagerOf || isRolesManagerOf) {
 			userProfileCtr = new ProfileAndHomePageEditController(ureq, getWindowControl(), identity, true);
 			listenTo(userProfileCtr);
 			userTabP.addTab(translate(NLS_EDIT_UPROFILE), userProfileCtr.getInitialComponent());
 		} else {
-			profileCtr = new ProfileFormController(ureq, getWindowControl(), identity, true, false);
+			boolean canModify = isInvitee && (managerRoles.isAdministrator() || managerRoles.isRolesManager() || managerRoles.isUserManager());
+			profileCtr = new ProfileFormController(ureq, getWindowControl(), identity, true, canModify);
 			listenTo(profileCtr);
 			userTabP.addTab(translate(NLS_EDIT_UPROFILE), profileCtr.getInitialComponent());
 		}
@@ -427,6 +457,28 @@ public class UserAdminController extends BasicController implements Activateable
 				prefsCtr = new ChangePrefsController(uureq, getWindowControl(), identity);
 				listenTo(prefsCtr);
 				return prefsCtr.getInitialComponent();
+			});
+		} else if(isInvitee) {
+			userTabP.addTab(ureq, translate(NLS_EDIT_UPREFS), uureq -> {
+				prefsCtr = new ChangeInviteePrefsController(uureq, getWindowControl(), identity);
+				listenTo(prefsCtr);
+				return prefsCtr.getInitialComponent();
+			});
+		}
+		
+		// the controller manager is read-write permissions
+		accountTab = userTabP.addTab(ureq, translate(NLS_EDIT_UACCOUNT), uureq -> {
+			accountCtrl = new UserAccountController(getWindowControl(), uureq, identity);
+			listenTo(accountCtrl);
+			return accountCtrl.getInitialComponent();
+		});
+		
+		if(!isInvitee && !isGuest) {
+			// the controller manager is read-write permissions
+			rolesTab = userTabP.addTab(ureq, translate(NLS_EDIT_UROLES), uureq -> {
+				rolesCtr = new UserRolesController(getWindowControl(), uureq, identity);
+				listenTo(rolesCtr);
+				return rolesCtr.getInitialComponent();
 			});
 		}
 
@@ -438,13 +490,15 @@ public class UserAdminController extends BasicController implements Activateable
 			});
 		}
 
-		if (isAdminOf) {
+		if (isAdminOf || isInvitee) {
 			userTabP.addTab(ureq, translate(NLS_EDIT_UAUTH),  uureq -> {
 				authenticationsCtr =  new UserAuthenticationsEditorController(uureq, getWindowControl(), identity);
 				listenTo(authenticationsCtr);
 				return authenticationsCtr.getInitialComponent();
 			});
+		}
 
+		if(isAdminOf) {
 			userTabP.addTab(ureq, translate(NLS_EDIT_UPROP), uureq -> {
 				propertiesCtr = new UserPropertiesController(uureq, getWindowControl(), identity, editedRoles);
 				listenTo(propertiesCtr);
@@ -452,19 +506,25 @@ public class UserAdminController extends BasicController implements Activateable
 			});
 		}
 		
-		if(isAdminOf || isPrincipalOf || isUserManagerOf || isRolesManagerOf) {
+		if(isAdminOf || isPrincipalOf || isUserManagerOf || isRolesManagerOf || isInvitee) {
 			userTabP.addTab(ureq, translate(NLS_VIEW_GROUPS),  uureq -> {
-				boolean canModify = isAdminOf || isUserManagerOf || isRolesManagerOf;
+				boolean canModify = isAdminOf || isUserManagerOf || isRolesManagerOf || (isInvitee && !managerRoles.isPrincipal());
 				grpCtr = new GroupOverviewController(uureq, getWindowControl(), identity, canModify, true);
 				listenTo(grpCtr);
 				return grpCtr.getInitialComponent();
 			});
 	
 			userTabP.addTab(ureq, translate(NLS_VIEW_COURSES), uureq -> {
-				boolean canModify = isAdminOf || isUserManagerOf || isRolesManagerOf;
+				boolean canModify = isAdminOf || isUserManagerOf || isRolesManagerOf || (isInvitee && !managerRoles.isPrincipal());
 				courseCtr = new CourseOverviewController(uureq, getWindowControl(), identity, canModify);
 				listenTo(courseCtr);
 				return courseCtr.getInitialComponent();
+			});
+			
+			userTabP.addTab(ureq, translate(NLS_VIEW_PORTFOLIO), uureq -> {
+				portfolioCtr = new InviteeBindersAdminController(uureq, getWindowControl(), identity);
+				listenTo(portfolioCtr);
+				return portfolioCtr.getInitialComponent();
 			});
 		}
 
@@ -504,13 +564,6 @@ public class UserAdminController extends BasicController implements Activateable
 				return subscriptionsCtr.getInitialComponent();
 			});
 		}
-
-		// the controller manager is read-write permissions
-		rolesTab = userTabP.addTab(ureq, translate(NLS_EDIT_UROLES), uureq -> {
-			rolesCtr = new SystemRolesAndRightsController(getWindowControl(), uureq, identity);
-			listenTo(rolesCtr);
-			return rolesCtr.getInitialComponent();
-		});
 		
 		if (securityModule.isRelationRoleEnabled() && (isUserManagerOf || isRolesManagerOf || isAdminOf || isPrincipalOf)) {
 			userTabP.addTab(ureq, translate(NLS_EDIT_RELATIONS),  uureq -> {
@@ -567,7 +620,7 @@ public class UserAdminController extends BasicController implements Activateable
 			});
 		}
 		
-		if(gradingModule.isEnabled()) {
+		if(gradingModule.isEnabled() && !isInvitee) {
 			userTabP.addTab(ureq, translate(NLS_VIEW_GRADER),  uureq -> {
 				graderOverviewCtrl = new GraderUserOverviewController(uureq, getWindowControl(), identity);
 				listenTo(graderOverviewCtrl);
@@ -587,7 +640,8 @@ public class UserAdminController extends BasicController implements Activateable
 		if (managerRoles.isManagerOf(OrganisationRoles.administrator, editedRoles)
 				|| managerRoles.isManagerOf(OrganisationRoles.rolesmanager, editedRoles)
 				|| (managerRoles.isManagerOf(OrganisationRoles.usermanager, editedRoles)
-						&& !editedRoles.isAdministrator() && !editedRoles.isRolesManager())) {
+						&& !editedRoles.isAdministrator() && !editedRoles.isRolesManager())
+				|| editedRoles.isInviteeOnly()) {
 			// show pwd form only if user has also right to create new passwords in case
 			// of a user that has no password yet
 			if(ldapLoginModule.isLDAPEnabled() && ldapLoginManager.isIdentityInLDAPSecGroup(identity)) {
@@ -604,12 +658,43 @@ public class UserAdminController extends BasicController implements Activateable
 	 * @param ureq
 	 * @param identity
 	 */
-	private void exposeUserDataToVC(UserRequest ureq, Identity identity) {
+	private void exposeUserDataToVC(UserRequest ureq, Identity identity, Roles roles) {
 		removeAsListenerAndDispose(portraitCtr);
 		portraitCtr = new DisplayPortraitController(ureq, getWindowControl(), identity, true, true);
 		myContent.put("portrait", portraitCtr.getInitialComponent());
 		removeAsListenerAndDispose(userShortDescrCtr);
-		userShortDescrCtr = new UserShortDescription(ureq, getWindowControl(), identity);
+		
+		Builder rowsBuilder = Rows.builder();
+		if(identity.getExpirationDate() != null) {
+			String inactivationDate = Formatter.getInstance(getLocale()).formatDate(identity.getExpirationDate());
+			rowsBuilder.addRow(translate("user.expiration.date"), inactivationDate);
+		}
+		if(roles.isInvitee()) {
+			rowsBuilder.addRow(translate("user.type"), translate("user.type.invitee"));
+		} else if(roles.isGuestOnly()) {
+			rowsBuilder.addRow(translate("user.type"), translate("user.type.guest"));
+		} else {
+			rowsBuilder.addRow(translate("user.type"), translate("user.type.user"));
+		}
+		userShortDescrCtr = new UserShortDescription(ureq, getWindowControl(), identity, rowsBuilder.build());
 		myContent.put("userShortDescription", userShortDescrCtr.getInitialComponent());
+		
+		int status = identity.getStatus().intValue();
+		if(status <= Identity.STATUS_ACTIV) {
+			exposeUserStatus("rightsForm.status.activ", "o_user_status_active");
+		} else if(status == Identity.STATUS_INACTIVE) {
+			exposeUserStatus("rightsForm.status.inactive", "o_user_status_inactive");
+		} else if(status == Identity.STATUS_LOGIN_DENIED) {
+			exposeUserStatus("rightsForm.status.login_denied", "o_user_status_login_denied");
+		} else if(status == Identity.STATUS_PENDING) {
+			exposeUserStatus("rightsForm.status.pending", "o_user_status_pending");
+		} else if(status == Identity.STATUS_DELETED) {
+			exposeUserStatus("rightsForm.status.deleted", "o_user_status_deleted");
+		}
+	}
+	
+	private void exposeUserStatus(String i18nStatus, String cssClass) {
+		myContent.contextPut("userStatusCssClass", cssClass);
+		myContent.contextPut("userStatus", translate(i18nStatus));
 	}
 }

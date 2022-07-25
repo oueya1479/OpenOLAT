@@ -19,8 +19,11 @@
  */
 package org.olat.modules.zoom.manager;
 
-import io.jsonwebtoken.JwtBuilder;
-import io.jsonwebtoken.Jwts;
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+
 import org.apache.http.Header;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
@@ -33,12 +36,20 @@ import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.util.EntityUtils;
 import org.apache.logging.log4j.Logger;
 import org.olat.core.commons.persistence.DB;
+import org.olat.core.id.User;
 import org.olat.core.logging.OLATRuntimeException;
 import org.olat.core.logging.Tracing;
+import org.olat.core.util.StringHelper;
 import org.olat.core.util.httpclient.HttpClientService;
 import org.olat.group.BusinessGroup;
 import org.olat.group.DeletableGroupData;
-import org.olat.ims.lti13.*;
+import org.olat.ims.lti13.LTI13Constants;
+import org.olat.ims.lti13.LTI13Key;
+import org.olat.ims.lti13.LTI13Module;
+import org.olat.ims.lti13.LTI13Service;
+import org.olat.ims.lti13.LTI13Tool;
+import org.olat.ims.lti13.LTI13ToolDeployment;
+import org.olat.ims.lti13.LTI13ToolType;
 import org.olat.ims.lti13.manager.LTI13ToolDAO;
 import org.olat.ims.lti13.manager.LTI13ToolDeploymentDAO;
 import org.olat.modules.zoom.ZoomConfig;
@@ -49,8 +60,8 @@ import org.olat.repository.RepositoryEntryDataDeletable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.util.*;
+import io.jsonwebtoken.JwtBuilder;
+import io.jsonwebtoken.Jwts;
 
 /**
  *
@@ -130,6 +141,11 @@ public class ZoomManagerImpl implements ZoomManager, DeletableGroupData, Reposit
     }
 
     @Override
+	public List<ZoomProfileDAO.ZoomProfileWithConfigCount> getProfilesWithConfigCount() {
+        return zoomProfileDao.getProfilesWithConfigCounts();
+    }
+
+    @Override
     public KeysAndValues getProfilesAsKeysAndValues() {
         KeysAndValues keysAndValues = new KeysAndValues();
         List<ZoomProfile> profiles = getProfiles();
@@ -162,23 +178,42 @@ public class ZoomManagerImpl implements ZoomManager, DeletableGroupData, Reposit
     }
 
     @Override
-    public void initializeConfig(RepositoryEntry entry, String subIdent, BusinessGroup businessGroup, ApplicationType applicationType) throws OLATRuntimeException {
+    public void initializeConfig(RepositoryEntry entry, String subIdent, BusinessGroup businessGroup,
+                                 ApplicationType applicationType, User user) throws OLATRuntimeException {
         if (zoomConfigDao.configExists(entry, subIdent, businessGroup)) {
             return;
         }
 
-        List<ZoomProfile> profiles = getProfiles();
-        if (profiles.isEmpty()) {
-            throw new OLATRuntimeException("No Zoom profiles available when trying to set default Zoom configuration");
-        }
-        ZoomProfile profile = profiles.get(0);
+        ZoomProfile profile = getProfileForUser(user);
 
         LTI13ToolDeployment toolDeployment = createLtiToolDeployment(profile.getLtiTool(), entry, subIdent, businessGroup);
         String id = businessGroup != null ? businessGroup.getKey().toString() : entry.getKey().toString() + "-" + subIdent;
         zoomConfigDao.createConfig(profile, toolDeployment, applicationType.name() + "-" + id);
    }
 
-    public boolean configExists(RepositoryEntry entry, String subIdent, BusinessGroup businessGroup) {
+    private ZoomProfile getProfileForUser(User user) {
+        List<ZoomProfile> profiles = getProfiles();
+        if (profiles.isEmpty()) {
+            throw new OLATRuntimeException("No Zoom profiles available when trying to set default Zoom configuration");
+        }
+
+        String mailDomainForUser = getMailDomainForUser(user);
+        for (ZoomProfile zoomProfile : profiles) {
+            if (StringHelper.containsNonWhitespace(zoomProfile.getMailDomains())) {
+                String[] mailDomains = zoomProfile.getMailDomains().split("\r?\n");
+                for (String mailDomain : mailDomains) {
+                    if (StringHelper.containsNonWhitespace(mailDomain) && mailDomain.equals(mailDomainForUser)) {
+                        return zoomProfile;
+                    }
+                }
+            }
+        }
+
+        return profiles.get(0);
+    }
+
+    @Override
+	public boolean configExists(RepositoryEntry entry, String subIdent, BusinessGroup businessGroup) {
         return zoomConfigDao.configExists(entry, subIdent, businessGroup);
     }
 
@@ -201,7 +236,8 @@ public class ZoomManagerImpl implements ZoomManager, DeletableGroupData, Reposit
         lti13ToolDeploymentDAO.deleteToolDeployment(existingToolDeployment);
     }
 
-    public LTI13ToolDeployment createLtiToolDeployment(LTI13Tool tool, RepositoryEntry entry, String subIdent, BusinessGroup businessGroup) {
+    @Override
+	public LTI13ToolDeployment createLtiToolDeployment(LTI13Tool tool, RepositoryEntry entry, String subIdent, BusinessGroup businessGroup) {
         LTI13ToolDeployment toolDeployment = lti13Service.createToolDeployment(TARGET_LINK_URL, tool, entry, subIdent, businessGroup);
         toolDeployment.setSendUserAttributesList(List.of("email"));
         toolDeployment.setSendCustomAttributes("");
@@ -333,5 +369,18 @@ public class ZoomManagerImpl implements ZoomManager, DeletableGroupData, Reposit
             log.error(e);
             return new ZoomConnectionResponse(500, null);
         }
+    }
+
+    @Override
+    public String getMailDomainForUser(User user) {
+        String email = user.getEmail();
+        int index = email.lastIndexOf("@");
+        if (index != -1) {
+            String domain = email.substring(index + 1);
+            if (StringHelper.containsNonWhitespace(domain)) {
+                return domain;
+            }
+        }
+        return "";
     }
 }

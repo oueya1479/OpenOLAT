@@ -33,6 +33,8 @@ import org.olat.core.gui.components.form.flexible.impl.elements.table.FlexiTable
 import org.olat.core.gui.components.form.flexible.impl.elements.table.filter.FlexiTableMultiSelectionFilter;
 import org.olat.core.util.StringHelper;
 import org.olat.core.util.vfs.VFSLeaf;
+import org.olat.modules.taxonomy.model.TaxonomyLevelNamePath;
+import org.olat.modules.taxonomy.ui.TaxonomyUIFactory;
 import org.olat.repository.RepositoryEntryMyView;
 import org.olat.repository.RepositoryEntryStatusEnum;
 import org.olat.repository.RepositoryManager;
@@ -59,6 +61,7 @@ public class DefaultRepositoryEntryDataSource implements FlexiTableDataSourceDel
 
 	private final RepositoryEntryDataSourceUIFactory uifactory;
 	private final SearchMyRepositoryEntryViewParams searchParams;
+	private final RepositoryEntryStatusEnum[] baseEntryStatus;
 	
 	private final ACService acService;
 	private final AccessControlModule acModule;
@@ -71,6 +74,7 @@ public class DefaultRepositoryEntryDataSource implements FlexiTableDataSourceDel
 			RepositoryEntryDataSourceUIFactory uifactory) {
 		this.uifactory = uifactory;
 		this.searchParams = searchParams;
+		baseEntryStatus = searchParams.getEntryStatus();
 		
 		acService = CoreSpringFactory.getImpl(ACService.class);
 		acModule = CoreSpringFactory.getImpl(AccessControlModule.class);
@@ -155,7 +159,7 @@ public class DefaultRepositoryEntryDataSource implements FlexiTableDataSourceDel
 				break;
 			case OWNED:
 				String ownedValue = ((FlexiTableExtendedFilter)filter).getValue();
-				searchParams.setMembershipMandatory(StringHelper.containsNonWhitespace(ownedValue));
+				searchParams.setMembershipMandatory(StringHelper.containsNonWhitespace(ownedValue) || searchParams.isMembershipOnly());
 				break;
 			case STATUS:
 				String value = ((FlexiTableExtendedFilter)filter).getValue();
@@ -165,6 +169,8 @@ public class DefaultRepositoryEntryDataSource implements FlexiTableDataSourceDel
 					searchParams.setEntryStatus(new RepositoryEntryStatusEnum[] {RepositoryEntryStatusEnum.published });
 				} else if("preparation".equals(value)) {
 					searchParams.setEntryStatus(RepositoryEntryStatusEnum.preparationToCoachPublished());
+				} else {
+					searchParams.setEntryStatus(baseEntryStatus);
 				}
 				break;
 			case DATES:
@@ -172,6 +178,7 @@ public class DefaultRepositoryEntryDataSource implements FlexiTableDataSourceDel
 				if (filterVals != null) {
 					filterVals.forEach(filterVal -> searchParams.addFilter(Filter.valueOf(filterVal)));
 				}
+				break;
 			case EDUCATIONALTYPE:
 				List<Long> educationalTypes = ((FlexiTableMultiSelectionFilter)filter).getLongValues();
 				searchParams.setEducationalTypeKeys(educationalTypes);
@@ -215,12 +222,14 @@ public class DefaultRepositoryEntryDataSource implements FlexiTableDataSourceDel
 		List<RepositoryEntryRow> items = new ArrayList<>();
 		for(RepositoryEntryMyView entry:repoEntries) {
 			RepositoryEntryRow row = new RepositoryEntryRow(entry);
-
+			
 			VFSLeaf image = repositoryManager.getImage(entry.getKey(), entry.getOlatResource());
 			if(image != null) {
 				row.setThumbnailRelPath(uifactory.getMapperThumbnailUrl() + "/" + image.getName());
 			}
-
+			
+			List<TaxonomyLevelNamePath> taxonomyLevels = TaxonomyUIFactory.getNamePaths(uifactory.getTranslator(), entry.getTaxonomyLevels());
+			row.setTaxonomyLevels(taxonomyLevels);
 			
 			List<PriceMethod> types = new ArrayList<>(3);
 			if(entry.isPublicVisible()) {

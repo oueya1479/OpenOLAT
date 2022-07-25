@@ -24,16 +24,19 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 import org.olat.core.gui.UserRequest;
 import org.olat.core.gui.control.Controller;
 import org.olat.core.gui.control.WindowControl;
 import org.olat.core.gui.translator.Translator;
 import org.olat.core.util.StringHelper;
+import org.olat.core.util.Util;
 import org.olat.core.util.xml.XStreamHelper;
 import org.olat.modules.catalog.CatalogLauncher;
 import org.olat.modules.catalog.CatalogLauncherHandler;
 import org.olat.modules.catalog.CatalogRepositoryEntrySearchParams;
+import org.olat.modules.catalog.CatalogV2Service;
 import org.olat.modules.catalog.ui.CatalogLauncherTaxonomyController;
 import org.olat.modules.catalog.ui.CatalogV2UIFactory;
 import org.olat.modules.catalog.ui.admin.CatalogLauncherTaxonomyEditController;
@@ -43,7 +46,11 @@ import org.olat.modules.taxonomy.TaxonomyModule;
 import org.olat.modules.taxonomy.TaxonomyService;
 import org.olat.modules.taxonomy.manager.TaxonomyLevelDAO;
 import org.olat.modules.taxonomy.ui.TaxonomyUIFactory;
+import org.olat.repository.RepositoryManager;
 import org.olat.repository.RepositoryModule;
+import org.olat.repository.RepositoryService;
+import org.olat.repository.handlers.RepositoryHandlerFactory;
+import org.olat.repository.ui.RepositoyUIFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -70,6 +77,8 @@ public class TaxonomyLevelLauncherHandler implements CatalogLauncherHandler {
 	}
 	
 	@Autowired
+	private CatalogV2Service catalogService;
+	@Autowired
 	private TaxonomyModule taxonomyModule;
 	@Autowired
 	private TaxonomyService taxonomyService;
@@ -77,6 +86,10 @@ public class TaxonomyLevelLauncherHandler implements CatalogLauncherHandler {
 	private TaxonomyLevelDAO taxonomyLevelDao;
 	@Autowired
 	private RepositoryModule repositoryModule;
+	@Autowired
+	private RepositoryManager repositoryManager;
+	@Autowired
+	private RepositoryHandlerFactory repositoryHandlerFactory;
 
 	@Override
 	public String getType() {
@@ -115,19 +128,49 @@ public class TaxonomyLevelLauncherHandler implements CatalogLauncherHandler {
 
 	@Override
 	public String getDetails(Translator translator, CatalogLauncher catalogLauncher) {
+		Translator repositoyTranslator = Util.createPackageTranslator(RepositoryService.class, translator.getLocale());
+		StringBuilder sb = new StringBuilder();
+		
 		Config config = fromXML(catalogLauncher.getConfig());
 		
 		Taxonomy taxonomy = getTaxonomy(config);
 		if (taxonomy != null) {
-			return taxonomy.getDisplayName();
+			sb.append(translator.translate("admin.taxonomy.levels.list", taxonomy.getDisplayName()));
+		} else {
+			TaxonomyLevel taxonomyLevel = getTaxonomyLevel(config);
+			if (taxonomyLevel != null) {
+				sb.append(translator.translate("admin.taxonomy.levels.list", TaxonomyUIFactory.translateDisplayName(translator, taxonomyLevel)));
+			} else {
+				sb.append("-");
+			}
 		}
 		
-		TaxonomyLevel taxonomyLevel = getTaxonomyLevel(config);
-		if (taxonomyLevel != null) {
-			return TaxonomyUIFactory.translateDisplayName(translator, taxonomyLevel);
+		if (config.getEducationalTypeKeys() != null && !config.getEducationalTypeKeys().isEmpty()) {
+			String educationalTypes = repositoryManager.getAllEducationalTypes().stream()
+					.filter(type -> config.getEducationalTypeKeys().contains(type.getKey()))
+					.map(type -> repositoyTranslator.translate(RepositoyUIFactory.getI18nKey(type)))
+					.sorted()
+					.collect(Collectors.joining(", "));
+			if (StringHelper.containsNonWhitespace(educationalTypes)) {
+				sb.append("<br>");
+				sb.append(translator.translate("admin.educational.types.list", educationalTypes));
+			}
 		}
 		
-		return "-";
+		if (config.getResourceTypes() != null && !config.getResourceTypes().isEmpty()) {
+			String types = repositoryHandlerFactory.getOrderRepositoryHandlers().stream()
+					.map(handler -> handler.getHandler().getSupportedType())
+					.filter(type -> config.getResourceTypes().contains(type))
+					.sorted((t1, t2) -> repositoyTranslator.translate(t1).compareTo(repositoyTranslator.translate(t2)))
+					.map(type -> "<i class=\"" + "o_icon o_icon-fw ".concat(RepositoyUIFactory.getIconCssClass(type)) + "\"> </i>" + repositoyTranslator.translate(type))
+					.collect(Collectors.joining(", "));
+			if (StringHelper.containsNonWhitespace(types)) {
+				sb.append("<br>");
+				sb.append(translator.translate("admin.resource.types.list", types));
+			}
+		}
+		
+		return sb.toString();
 	}
 
 	@Override
@@ -141,6 +184,7 @@ public class TaxonomyLevelLauncherHandler implements CatalogLauncherHandler {
 		Config config = fromXML(catalogLauncher.getConfig());
 		
 		List<TaxonomyLevel> taxonomyLevels = getChildren(config);
+		catalogService.excludeLevelsWithoutOffers(taxonomyLevels, defaultSearchParams);
 		if (taxonomyLevels == null) return null;
 		
 		taxonomyLevels.sort(CatalogV2UIFactory.getTaxonomyLevelComparator(translator));
@@ -168,7 +212,7 @@ public class TaxonomyLevelLauncherHandler implements CatalogLauncherHandler {
 	 * @return the list of TaxonomyLevel from the second to most level to the TaxonomyLevel of the key (if found)
 	 *         and the belonging restrictions.
 	 */
-	public Levels getTaxonomyLevels(CatalogLauncher catalogLauncher, Long key) {
+	public Levels getTaxonomyLevels(CatalogLauncher catalogLauncher, Long key, CatalogRepositoryEntrySearchParams searchParams) {
 		Config config = fromXML(catalogLauncher.getConfig());
 		TaxonomyLevel configTaxonomyLevel = null;
 		List<TaxonomyLevel> descendants = null;
@@ -181,6 +225,7 @@ public class TaxonomyLevelLauncherHandler implements CatalogLauncherHandler {
 				descendants =  taxonomyLevelDao.getDescendants(configTaxonomyLevel, null);
 			}
 		}
+		catalogService.excludeLevelsWithoutOffers(descendants, searchParams);
 		if (descendants == null) return null;
 		
 		Optional<TaxonomyLevel> taxonomyLevel = descendants.stream()
@@ -215,7 +260,7 @@ public class TaxonomyLevelLauncherHandler implements CatalogLauncherHandler {
 		}
 		return null;
 	}
-	
+
 	public Config fromXML(String xml) {
 		try {
 			return (Config)configXstream.fromXML(xml);

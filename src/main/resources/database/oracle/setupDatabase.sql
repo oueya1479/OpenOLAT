@@ -93,6 +93,8 @@ CREATE TABLE o_gp_business (
   maxparticipants number(11),
   waitinglist_enabled number,
   autocloseranks_enabled number,
+  invitations_coach_enabled number default 1 not null,
+  lti_deployment_coach_enabled number default 0 not null,
   ownersintern number default 0 not null,
   participantsintern number default 0 not null,
   waitingintern number default 0 not null,
@@ -563,6 +565,8 @@ CREATE TABLE o_repositoryentry (
   candownload number NOT NULL,
   cancopy number NOT NULL,
   canreference number NOT NULL,
+  invitations_owner_enabled number default 1 not null,
+  lti_deployment_owner_enabled number default 0 not null,
   deletiondate date default null,
   fk_deleted_by number(20) default null,
   fk_educational_type number(20) default null,
@@ -826,6 +830,11 @@ create table o_bs_invitation (
    first_name varchar(64 char),
    last_name varchar(64 char),
    mail varchar(128 char),
+   i_type varchar(32) default 'binder' not null,
+   i_url varchar(512),
+   i_roles varchar(255),
+   i_registration number default 0 not null,
+   i_additional_infos CLOB,
    fk_group_id number(20),
    fk_identity_id number(20),
    primary key (id)
@@ -1091,7 +1100,7 @@ create table o_ca_launcher (
    c_identifier varchar2(32),
    c_sort_order number(20),
    c_enabled number default 1 not null,
-   c_config varchar2(1024),
+   c_config varchar2(4000),
    primary key (id)
 );
 create table o_ca_filter (
@@ -1102,7 +1111,7 @@ create table o_ca_filter (
    c_sort_order number(20),
    c_enabled number default 1 not null,
    c_default_visible number default 1 not null,
-   c_config varchar2(1024),
+   c_config varchar2(4000),
    primary key (id)
 );
 

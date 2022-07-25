@@ -132,6 +132,11 @@ public class BusinessGroupImpl implements BusinessGroup {
 	private Boolean waitingListEnabled;
 	@Column(name="autocloseranks_enabled", nullable=true, insertable=true, updatable=true)
 	private Boolean autoCloseRanksEnabled;
+	
+	@Column(name="invitations_coach_enabled", nullable=true, insertable=true, updatable=true)
+	private boolean invitationByCoachWithAuthorRightsEnabled;
+	@Column(name="lti_deployment_coach_enabled", nullable=true, insertable=true, updatable=true)
+	private boolean lti13DeploymentByCoachWithAuthorRightsEnabled;
 
 	@Temporal(TemporalType.TIMESTAMP)
 	@Column(name="lastusage", nullable=true, insertable=true, updatable=true)
@@ -489,6 +494,26 @@ public class BusinessGroupImpl implements BusinessGroup {
 	@Override
 	public void setAutoCloseRanksEnabled(Boolean autoCloseRanksEnabled) {
 		this.autoCloseRanksEnabled = autoCloseRanksEnabled;
+	}
+
+	@Override
+	public boolean isInvitationByCoachWithAuthorRightsEnabled() {
+		return invitationByCoachWithAuthorRightsEnabled;
+	}
+
+	@Override
+	public void setInvitationByCoachWithAuthorRightsEnabled(boolean enabled) {
+		invitationByCoachWithAuthorRightsEnabled = enabled;
+	}
+	
+	@Override
+	public boolean isLTI13DeploymentByCoachWithAuthorRightsEnabled() {
+		return lti13DeploymentByCoachWithAuthorRightsEnabled;
+	}
+
+	@Override
+	public void setLTI13DeploymentByCoachWithAuthorRightsEnabled(boolean enabled) {
+		lti13DeploymentByCoachWithAuthorRightsEnabled = enabled;
 	}
 
 	@Override

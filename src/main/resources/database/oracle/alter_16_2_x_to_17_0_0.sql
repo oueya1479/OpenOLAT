@@ -41,7 +41,7 @@ create table o_ca_launcher (
    c_identifier varchar2(32),
    c_sort_order number(20),
    c_enabled number default 1 not null,
-   c_config varchar2(1024),
+   c_config varchar2(4000),
    primary key (id)
 );
 create table o_ca_filter (
@@ -52,7 +52,7 @@ create table o_ca_filter (
    c_sort_order number(20),
    c_enabled number default 1 not null,
    c_default_visible number default 1 not null,
-   c_config varchar2(1024),
+   c_config varchar2(4000),
    primary key (id)
 );
 
@@ -120,6 +120,8 @@ alter table o_lti_tool_deployment add fk_group_id number(20);
 alter table o_lti_tool_deployment add constraint dep_to_group_idx foreign key (fk_group_id) references o_gp_business(group_id);
 create index idx_dep_to_group_idx on o_lti_tool_deployment (fk_group_id);
 
+alter table o_gp_business add lti_deployment_coach_enabled number default 0 not null;
+alter table o_repositoryentry add lti_deployment_owner_enabled number default 0 not null;
 
 -- Certificates
 alter table o_cer_certificate add c_external_id varchar(64);
@@ -159,3 +161,17 @@ create index idx_zoom_config_profile_idx on o_zoom_config (fk_profile);
 
 alter table o_zoom_config add constraint zoom_config_tool_deployment_idx foreign key (fk_lti_tool_deployment_id) references o_lti_tool_deployment (id);
 create index idx_zoom_config_tool_deployment_idx on o_zoom_config (fk_lti_tool_deployment_id);
+
+
+-- External users
+alter table o_gp_business add invitations_coach_enabled number default 1 not null;
+alter table o_repositoryentry add invitations_owner_enabled number default 1 not null;
+
+alter table o_bs_invitation add i_type varchar(32) default 'binder' not null;
+alter table o_bs_invitation add i_url varchar(512) default null;
+alter table o_bs_invitation add i_roles varchar(255) default null;
+alter table o_bs_invitation add i_registration number default 0 not null;
+alter table o_bs_invitation add i_additional_infos CLOB default null;
+
+
+

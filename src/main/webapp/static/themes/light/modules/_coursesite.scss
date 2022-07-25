@@ -354,6 +354,7 @@
 		border-radius: $o-coursesite-rowelem-border-radius;
 		background: $o-coursesite-rowelem-bg;
 		padding: 5px;
+		cursor: pointer;
 		display: flex;
 		flex-direction: column;
 		
@@ -361,7 +362,6 @@
 			box-sizing: content-box;
 			border-radius: $o-coursesite-rowelem-border-radius - 1px;
 			margin-bottom: 10px;
-			cursor: pointer;
 			display: flex;
 			align-items: center;
 			
@@ -388,8 +388,20 @@
 				@include text-overflow();
 				display: block;
 			}
-			.o_edu_type {
+			.o_taxonomy_levels {
 				margin-top: 0.5em;
+				color: $text-muted;
+				font-size: 85%;
+				vertical-align: text-bottom;
+
+				@include text-overflow();
+				width: 98%;
+				
+				.o_taxonomy {
+					font-size: 82%;
+					display: inline-block;
+					margin-bottom: 0;
+				}
 			}
 			.o_teaser {
 				margin-top: 0.5em;
@@ -414,7 +426,7 @@
 		}
 	}
 	
-	// All cards have the same hight
+	// All cards have the same height
 	&.swiper {
 		.swiper-wrapper {
 			align-items: stretch;
@@ -679,11 +691,12 @@
 		margin-bottom: -20px;
 		.o_catalog_header_item {
 			padding: 20px 20px 40px 20px;
-			height: $o-cat2-header-hight;
-			max-height: $o-cat2-header-hight;
+			height: $o-cat2-header-height;
+			max-height: $o-cat2-header-height;
 		}
 		.o_catalog_header_item:not(.o_header_bg_image) {
-			background: linear-gradient(90deg, rgba(255,255,255,1) 0%, rgba($brand-primary,1) 100%);
+			background: $o-cat2-header-noimage-bg;
+			background-blend-mode: $o-cat2-header-noimage-bg-blend-mode;
 		}
 		.o_header_bg_image {
 			background-repeat: no-repeat;
@@ -696,11 +709,12 @@
 		align-items: center;
 		
 		.o_search_box {
+			border-radius: $o-coursesite-rowelem-border-radius;
 			background-color: $input-bg;
 			padding: 1px 20px 20px 20px;
 		}
 		.o_search_box:is(.o_header_bg_image *) {
-			background-color: rgba(255,255,255,.95);
+			background-color: $o-cat2-header-box-bg-color;
 		}
 	}
 	.o_catalog_taxonomy_header {
@@ -711,8 +725,9 @@
 				margin: 0px;
 			}
 			.o_taxonomy:is(.o_header_bg_image *) {
+				border-radius: $o-coursesite-rowelem-border-radius;
+				background-color: $o-cat2-header-box-bg-color;
 				padding: 20px;
-				background-color: rgba(255,255,255,.95);
 			}
 		}
 	}
@@ -732,40 +747,45 @@
 	}
 	
 	.o_taxonomy_launchers {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 8px;
+		display: grid;
+		gap: 10px;
+		grid-template-columns: repeat(auto-fill, minmax(208px, 1fr));
+		&.o_launchers_square {
+			grid-template-columns: repeat(auto-fill, minmax(153px, 1fr));
+		}
+		@media (max-width: 605px) {
+			// Always display at least two cards side by side like defined in swiper (launch_repository_entry.html)
+			grid-template-columns: repeat(2, auto);
+		}
 		.o_taxonomy_launcher {
 			border: 1px solid $o-coursesite-rowelem-border;
 			border-radius: $o-coursesite-rowelem-border-radius;
 			background: $o-coursesite-rowelem-bg;
 			cursor: pointer;
 			position: relative;
-			width: 242px;
-			max-width: 242px;
 			aspect-ratio: 2.4;
 			&:is(.o_launchers_square *) {
-				width: 122px;
-				max-width: 122px;
-				height: 122px;
+				aspect-ratio: 1;
+				.o_meta {
+					.o_title {
+						font-size: $o-cat2-tax-launcher-square-font-size;
+					}
+				}
 			}
 			.o_visual {
 				box-sizing: content-box;
 				border-radius: $o-coursesite-rowelem-border-radius;
-				width: 240px;
-				max-width: 240px;
+				height: auto;
+				width: auto;
 				aspect-ratio: 2.4;
 				&:is(.o_launchers_square *) {
-					width: 120px;
-					max-width: 120px;
-					height: 120px;
+					aspect-ratio: 1;
 				}
 				.o_visual_not_available {
 					display: block;
 				}
 				.o_visual_available {
-					background-position: left;
-					background-size: cover;
+					background-size: contain;
 				}
 			}
 			
@@ -774,7 +794,8 @@
 				left: 0;
 				bottom: 0;
 				width: 100%;
-				border-radius: $o-coursesite-rowelem-border-radius;
+				border-bottom-left-radius: $o-coursesite-rowelem-border-radius;
+				border-bottom-right-radius: $o-coursesite-rowelem-border-radius;
 				background-color: rgba(255,255,255,.8);
 				
 				.o_title {
@@ -797,41 +818,11 @@
 				}
 			}
 		}
-		
-		@media (min-width: $screen-sm-min) and (max-width: $screen-sm-max) {
-			gap: 6px; 
-			.o_taxonomy_launcher {
-				width: 152px;
-				max-width: 152px;
-				.o_visual {
-						width: 150px;
-					max-width: 150px;
-				}
-			}
-			.o_title {
-				font-size: 90%;
-			}
-		}
-		@media (max-width: $screen-xs-max) {
-			gap: 6px; 
-			.o_taxonomy_launcher {
-				width: 122px;
-				max-width: 122px;
-				.o_visual {
-					width: 120px;
-					max-width: 120px;
-				}
-			}
-			.o_title {
-				font-size: 90%;
-			}
-		}
 	}
 	
 	.o_card_hover {
 		&:hover {
 			border: 1px solid $brand-primary;
-			box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.15);
 			border-radius: 3px;
 		}
 	}

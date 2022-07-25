@@ -150,7 +150,6 @@ public class CourseConfig implements Serializable, Cloneable {
 	private static final transient String COACH_FOLDER_ENABLED = "COACH_FOLDER_ENABLED";
 	private static final transient String COACH_FOLDER_PATH = "COACH_FOLDER_PATH";
 
-
 	/**
 	 * config file version from file
 	 */
